@@ -1,0 +1,5 @@
+build-*/
+bin/Win32/
+lib/Win32/
+.vs/
+*.user
