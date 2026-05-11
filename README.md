@@ -16,7 +16,7 @@ Supported flags:
 - `OYNON_HOOK_MOVEMENT_VERTICAL` - enables jump height and landing gravity overrides.
 - `OYNON_HOOK_UI_DAYCHANGE_TEXT` - enables temporary redirection of `daychange.xml` to a custom UI XML.
 
-Supported flags:
+API Methods:
 
 `OynonRegisterConsoleMessageCallback(OynonConsoleMessageCallback callback, void* userData)`
 
