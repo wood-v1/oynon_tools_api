@@ -9,15 +9,14 @@
 
 BOOL OynonInitializeHooksWhenReady(DWORD hookFlags)
 {
-    const DWORD needsEngineBase = hookFlags & (
+    const DWORD engineHookFlags = hookFlags & (
         OYNON_HOOK_CONSOLE_READ | 
         OYNON_HOOK_CONSOLE_EXECUTE | 
         OYNON_HOOK_MOVEMENT_FRICTION | 
-        OYNON_HOOK_MOVEMENT_VERTICAL |
-        OYNON_HOOK_UI_DAYCHANGE_TEXT
+        OYNON_HOOK_MOVEMENT_VERTICAL
     );
 
-    if (needsEngineBase != 0) {
+    if (engineHookFlags != 0) {
         while (::GetModuleHandleA("Engine.dll") == nullptr) {
             ::Sleep(100);
         }
@@ -26,7 +25,8 @@ BOOL OynonInitializeHooksWhenReady(DWORD hookFlags)
     }
 
     const DWORD resolvedBase = ResolveAndStoreEngineBase(0);
-    if (needsEngineBase && resolvedBase == 0) {
+    if (engineHookFlags != 0 && resolvedBase == 0) {
+        WriteDebugLog("PGOG", "Oynon init failed: Engine base resolution returned 0");
         return FALSE;
     }
 
@@ -34,17 +34,26 @@ BOOL OynonInitializeHooksWhenReady(DWORD hookFlags)
 
     BOOL ok = TRUE;
     if ((hookFlags & OYNON_HOOK_CONSOLE_READ) && !InstallConsoleReadHooks(resolvedBase)) {
+        WriteDebugLog("PGOG", "Oynon init failed: console read hook install failed");
         ok = FALSE;
     }
     if ((hookFlags & OYNON_HOOK_CONSOLE_EXECUTE) && !InstallConsoleExecuteHook(resolvedBase)) {
+        WriteDebugLog("PGOG", "Oynon init failed: console execute hook install failed");
         ok = FALSE;
     }
     if ((hookFlags & (OYNON_HOOK_MOVEMENT_FRICTION | OYNON_HOOK_MOVEMENT_VERTICAL)) &&
         !InstallMovementHooks(resolvedBase, hookFlags)) {
+        WriteDebugLog("PGOG", "Oynon init failed: movement hook install failed");
         ok = FALSE;
     }
-    if ((hookFlags & OYNON_HOOK_UI_DAYCHANGE_TEXT) && !TryInstallUIDaychangeHook()) {
-        ok = FALSE;
+    if (hookFlags & OYNON_HOOK_UI_DAYCHANGE_TEXT) {
+        if (::GetModuleHandleA("UI.dll") == nullptr) {
+            WriteDebugLog("PGOG", "Oynon UI hook deferred until UI.dll loads");
+        }
+        else if (!TryInstallUIDaychangeHook()) {
+            WriteDebugLog("PGOG", "Oynon init failed: UI daychange hook install failed");
+            ok = FALSE;
+        }
     }
 
     return ok;
