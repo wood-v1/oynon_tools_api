@@ -46,12 +46,12 @@ BOOL OynonInitializeHooksWhenReady(DWORD hookFlags)
         WriteDebugLog("PGOG", "Oynon init failed: movement hook install failed");
         ok = FALSE;
     }
-    if (hookFlags & OYNON_HOOK_UI_DAYCHANGE_TEXT) {
+    if (hookFlags & (OYNON_HOOK_UI_DAYCHANGE_TEXT | OYNON_HOOK_UI_PLAYERSTAT_REDIRECT)) {
         if (::GetModuleHandleA("UI.dll") == nullptr) {
             WriteDebugLog("PGOG", "Oynon UI hook deferred until UI.dll loads");
         }
         else if (!TryInstallUIDaychangeHook()) {
-            WriteDebugLog("PGOG", "Oynon init failed: UI daychange hook install failed");
+            WriteDebugLog("PGOG", "Oynon init failed: UI hook install failed");
             ok = FALSE;
         }
     }
@@ -99,9 +99,24 @@ BOOL OynonUIDaychangeIsVanillaActive(DWORD now)
     return IsVanillaUIDaychangeActive(now);
 }
 
+void OynonUIPlayerstatSetRedirect(const char* xml)
+{
+    SetUIPlayerstatRedirect(xml);
+}
+
 BOOL OynonDebugConfigureChannel(const char* channelId, BOOL enabled, const char* logPath, const char* consoleCapturePath)
 {
     return ConfigureDebugChannel(channelId, enabled, logPath, consoleCapturePath);
+}
+
+BOOL OynonDebugConfigureLauncherChannel(const char* channelId, BOOL captureConsole)
+{
+    return ConfigureLauncherDebugChannel(channelId, captureConsole);
+}
+
+BOOL OynonDebugClearConsoleCapture(const char* channelId)
+{
+    return ClearDebugConsoleCapture(channelId);
 }
 
 void OynonDebugOpenConsole()

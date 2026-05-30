@@ -15,6 +15,7 @@ constexpr DWORD UI_CREATE_WND_OFFSET = 0x0001BD60;
 constexpr DWORD VANILLA_DAYCHANGE_BUSY_MS = 9000;
 constexpr std::size_t MAX_REDIRECT_XML_LEN = 128;
 constexpr const char* VANILLA_DAYCHANGE_XML = "daychange.xml";
+constexpr const char* VANILLA_PLAYERSTAT_XML = "playerstat.xml";
 constexpr const char* PGOG_DEBUG_CHANNEL = "PGOG";
 
 InlineHook g_createWndHook;
@@ -23,6 +24,7 @@ DWORD g_lastCreateWndHookAttempt = 0;
 DWORD g_messageRedirectUntil = 0;
 DWORD g_vanillaDaychangeBusyUntil = 0;
 char g_redirectXml[MAX_REDIRECT_XML_LEN] = {};
+char g_playerstatRedirectXml[MAX_REDIRECT_XML_LEN] = {};
 
 void* __fastcall HookCreateWnd(void* self, void*, void* station, const char* xml, void* eventReceiver);
 
@@ -48,6 +50,14 @@ void* __fastcall HookCreateWnd(void* self, void*, void* station, const char* xml
     const DWORD now = ::GetTickCount();
     const bool redirectActive = IsFutureTick(g_messageRedirectUntil, now) && g_redirectXml[0] != '\0';
     const bool daychangeRequested = xml && std::strcmp(xml, VANILLA_DAYCHANGE_XML) == 0;
+    const bool playerstatRequested = xml && std::strcmp(xml, VANILLA_PLAYERSTAT_XML) == 0;
+
+    if (playerstatRequested && g_playerstatRedirectXml[0] != '\0') {
+        WriteDebugLog(PGOG_DEBUG_CHANNEL, "Oynon UI redirecting playerstat window");
+        return g_originalCreateWnd
+            ? g_originalCreateWnd(self, station, g_playerstatRedirectXml, eventReceiver)
+            : nullptr;
+    }
 
     if (redirectActive && daychangeRequested) {
         WriteDebugLog(PGOG_DEBUG_CHANNEL, "Oynon UI redirecting daychange window");
@@ -106,7 +116,8 @@ bool IsUIDaychangeHookInstalled()
 
 void PollUIDaychangeHook()
 {
-    if (!(GetRequestedHookFlags() & OYNON_HOOK_UI_DAYCHANGE_TEXT)) {
+    const DWORD uiHookFlags = OYNON_HOOK_UI_DAYCHANGE_TEXT | OYNON_HOOK_UI_PLAYERSTAT_REDIRECT;
+    if (!(GetRequestedHookFlags() & uiHookFlags)) {
         return;
     }
 
@@ -144,4 +155,17 @@ void RequestUIDaychangeRedirect(const char* xml, DWORD ttlMs)
 BOOL IsVanillaUIDaychangeActive(DWORD now)
 {
     return IsFutureTick(g_vanillaDaychangeBusyUntil, now) ? TRUE : FALSE;
+}
+
+void SetUIPlayerstatRedirect(const char* xml)
+{
+    if (!xml || xml[0] == '\0') {
+        g_playerstatRedirectXml[0] = '\0';
+        WriteDebugLog(PGOG_DEBUG_CHANNEL, "Oynon UI playerstat redirect cleared");
+        return;
+    }
+
+    std::strncpy(g_playerstatRedirectXml, xml, sizeof(g_playerstatRedirectXml) - 1);
+    g_playerstatRedirectXml[sizeof(g_playerstatRedirectXml) - 1] = '\0';
+    WriteDebugLog(PGOG_DEBUG_CHANNEL, "Oynon UI playerstat redirect configured");
 }

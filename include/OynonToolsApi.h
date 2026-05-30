@@ -23,6 +23,7 @@ enum OynonHookFlags : DWORD
     OYNON_HOOK_MOVEMENT_FRICTION = 1u << 2,
     OYNON_HOOK_MOVEMENT_VERTICAL = 1u << 3,
     OYNON_HOOK_UI_DAYCHANGE_TEXT = 1u << 4,
+    OYNON_HOOK_UI_PLAYERSTAT_REDIRECT = 1u << 5,
 };
 
 using OynonConsoleMessageCallback = void(__stdcall*)(const char* message, void* userData);
@@ -40,8 +41,11 @@ OYNONTOOLS_API BOOL OynonSetMovementLandingGravity(int landingGravity);
 OYNONTOOLS_API void OynonUIDaychangePoll();
 OYNONTOOLS_API void OynonUIDaychangeRequestRedirect(const char* xml, DWORD ttlMs);
 OYNONTOOLS_API BOOL OynonUIDaychangeIsVanillaActive(DWORD now);
+OYNONTOOLS_API void OynonUIPlayerstatSetRedirect(const char* xml);
 
 OYNONTOOLS_API BOOL OynonDebugConfigureChannel(const char* channelId, BOOL enabled, const char* logPath, const char* consoleCapturePath);
+OYNONTOOLS_API BOOL OynonDebugConfigureLauncherChannel(const char* channelId, BOOL captureConsole);
+OYNONTOOLS_API BOOL OynonDebugClearConsoleCapture(const char* channelId);
 OYNONTOOLS_API void OynonDebugOpenConsole();
 OYNONTOOLS_API void OynonDebugLog(const char* channelId, const char* line);
 OYNONTOOLS_API void OynonDebugAppendConsoleCaptureLine(const char* channelId, const char* line);

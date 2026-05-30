@@ -7,3 +7,4 @@ bool IsUIDaychangeHookInstalled();
 void PollUIDaychangeHook();
 void RequestUIDaychangeRedirect(const char* xml, DWORD ttlMs);
 BOOL IsVanillaUIDaychangeActive(DWORD now);
+void SetUIPlayerstatRedirect(const char* xml);

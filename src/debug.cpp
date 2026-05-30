@@ -22,6 +22,10 @@ std::mutex g_debugMutex;
 std::vector<DebugChannel> g_debugChannels;
 bool g_debugConsoleOpened = false;
 HANDLE g_debugConsoleHandle = nullptr;
+char g_launcherIniPath[MAX_PATH] = {};
+char g_launcherDebugLogPath[MAX_PATH] = {};
+char g_launcherConsoleLogPath[MAX_PATH] = {};
+bool g_launcherPathsInitialized = false;
 
 void MoveConsoleToRightSide()
 {
@@ -55,6 +59,20 @@ void MoveConsoleToRightSide()
         width,
         height,
         SWP_NOZORDER | SWP_NOACTIVATE);
+}
+
+bool TrimLastPathComponent(char* path)
+{
+    char* slash = std::strrchr(path, '\\');
+    if (!slash) {
+        slash = std::strrchr(path, '/');
+    }
+    if (!slash) {
+        return false;
+    }
+
+    *slash = '\0';
+    return true;
 }
 
 std::size_t TrimTrailingNewlines(char* line)
@@ -110,6 +128,55 @@ DebugChannel* FindDebugChannelLocked(const char* channelId)
 
     return nullptr;
 }
+
+bool EnsureLauncherPathsInitializedLocked()
+{
+    if (g_launcherPathsInitialized) {
+        return g_launcherIniPath[0] != '\0' && g_launcherDebugLogPath[0] != '\0';
+    }
+
+    g_launcherPathsInitialized = true;
+
+    HMODULE module = nullptr;
+    if (!::GetModuleHandleExA(
+            GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+            reinterpret_cast<LPCSTR>(&EnsureLauncherPathsInitializedLocked),
+            &module)) {
+        return false;
+    }
+
+    char modulePath[MAX_PATH] = {};
+    if (!::GetModuleFileNameA(module, modulePath, MAX_PATH)) {
+        return false;
+    }
+
+    if (!TrimLastPathComponent(modulePath)) {
+        return false;
+    }
+
+    std::snprintf(g_launcherDebugLogPath, sizeof(g_launcherDebugLogPath), "%s\\Debug.log", modulePath);
+    std::snprintf(g_launcherConsoleLogPath, sizeof(g_launcherConsoleLogPath), "%s\\Console.log", modulePath);
+
+    char gameRoot[MAX_PATH] = {};
+    std::snprintf(gameRoot, sizeof(gameRoot), "%s", modulePath);
+    if (!TrimLastPathComponent(gameRoot)) {
+        g_launcherDebugLogPath[0] = '\0';
+        g_launcherConsoleLogPath[0] = '\0';
+        return false;
+    }
+
+    std::snprintf(g_launcherIniPath, sizeof(g_launcherIniPath), "%s\\GameModLauncher.ini", gameRoot);
+    return true;
+}
+
+BOOL ReadLauncherLoggingEnabledLocked()
+{
+    if (!EnsureLauncherPathsInitializedLocked()) {
+        return FALSE;
+    }
+
+    return ::GetPrivateProfileIntA("Logging", "Enabled", 1, g_launcherIniPath) != 0;
+}
 }
 
 BOOL ConfigureDebugChannel(const char* channelId, BOOL enabled, const char* logPath, const char* consoleCapturePath)
@@ -130,6 +197,30 @@ BOOL ConfigureDebugChannel(const char* channelId, BOOL enabled, const char* logP
     channel->logPath = logPath ? logPath : "";
     channel->consoleCapturePath = consoleCapturePath ? consoleCapturePath : "";
     return TRUE;
+}
+
+BOOL ConfigureLauncherDebugChannel(const char* channelId, BOOL captureConsole)
+{
+    char logPath[MAX_PATH] = {};
+    char consoleCapturePath[MAX_PATH] = {};
+    BOOL enabled = FALSE;
+
+    {
+        std::lock_guard<std::mutex> lock(g_debugMutex);
+        enabled = ReadLauncherLoggingEnabledLocked();
+        if (enabled) {
+            std::snprintf(logPath, sizeof(logPath), "%s", g_launcherDebugLogPath);
+            if (captureConsole != FALSE) {
+                std::snprintf(consoleCapturePath, sizeof(consoleCapturePath), "%s", g_launcherConsoleLogPath);
+            }
+        }
+    }
+
+    return ConfigureDebugChannel(
+        channelId,
+        enabled,
+        enabled ? logPath : "",
+        enabled && captureConsole != FALSE ? consoleCapturePath : "");
 }
 
 void OpenDebugConsole()
@@ -201,9 +292,33 @@ void AppendDebugConsoleCaptureLine(const char* channelId, const char* line)
 
     std::lock_guard<std::mutex> lock(g_debugMutex);
     DebugChannel* channel = FindDebugChannelLocked(channelId);
-    if (!channel || channel->consoleCapturePath.empty()) {
+    if (!channel || !channel->enabled || channel->consoleCapturePath.empty()) {
         return;
     }
 
     AppendLineToPath(channel->consoleCapturePath.c_str(), buffer, length);
+}
+
+BOOL ClearDebugConsoleCapture(const char* channelId)
+{
+    std::lock_guard<std::mutex> lock(g_debugMutex);
+    DebugChannel* channel = FindDebugChannelLocked(channelId);
+    if (!channel || !channel->enabled || channel->consoleCapturePath.empty()) {
+        return FALSE;
+    }
+
+    HANDLE file = ::CreateFileA(
+        channel->consoleCapturePath.c_str(),
+        GENERIC_WRITE,
+        FILE_SHARE_READ | FILE_SHARE_WRITE,
+        nullptr,
+        CREATE_ALWAYS,
+        FILE_ATTRIBUTE_NORMAL,
+        nullptr);
+    if (file == INVALID_HANDLE_VALUE) {
+        return FALSE;
+    }
+
+    ::CloseHandle(file);
+    return TRUE;
 }
