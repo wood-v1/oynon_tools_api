@@ -20,24 +20,33 @@ struct ConsoleMessageListener
     void* userData = nullptr;
 };
 
+struct ConsoleMessageFilter
+{
+    OynonConsoleMessageFilter filter = nullptr;
+    void* userData = nullptr;
+};
+
 std::mutex g_listenerMutex;
 std::vector<ConsoleMessageListener> g_consoleMessageListeners;
+std::vector<ConsoleMessageFilter> g_consoleMessageFilters;
 
 InlineHook g_consoleHook1;
 InlineHook g_consoleHook2;
 AddConsoleMessage1_t g_originalAddConsoleMessage1 = nullptr;
 AddConsoleMessage2_t g_originalAddConsoleMessage2 = nullptr;
 
-void DispatchConsoleMessage(const char* message)
+bool DispatchConsoleMessage(const char* message)
 {
     if (!message) {
-        return;
+        return false;
     }
 
     std::vector<ConsoleMessageListener> listeners;
+    std::vector<ConsoleMessageFilter> filters;
     {
         std::lock_guard<std::mutex> lock(g_listenerMutex);
         listeners = g_consoleMessageListeners;
+        filters = g_consoleMessageFilters;
     }
 
     for (const ConsoleMessageListener& listener : listeners) {
@@ -45,20 +54,28 @@ void DispatchConsoleMessage(const char* message)
             listener.callback(message, listener.userData);
         }
     }
+
+    bool suppress = false;
+    for (const ConsoleMessageFilter& filter : filters) {
+        if (filter.filter && filter.filter(message, filter.userData)) {
+            suppress = true;
+        }
+    }
+    return suppress;
 }
 
 void __fastcall HookAddConsoleMessage1(void* self, void*, const char* message)
 {
-    DispatchConsoleMessage(message);
-    if (g_originalAddConsoleMessage1) {
+    const bool suppress = DispatchConsoleMessage(message);
+    if (!suppress && g_originalAddConsoleMessage1) {
         g_originalAddConsoleMessage1(self, message);
     }
 }
 
 void __fastcall HookAddConsoleMessage2(void* self, void*, const char* message, const ColorValue& color)
 {
-    DispatchConsoleMessage(message);
-    if (g_originalAddConsoleMessage2) {
+    const bool suppress = DispatchConsoleMessage(message);
+    if (!suppress && g_originalAddConsoleMessage2) {
         g_originalAddConsoleMessage2(self, message, color);
     }
 }
@@ -108,5 +125,26 @@ BOOL RegisterConsoleMessageCallback(OynonConsoleMessageCallback callback, void* 
     }
 
     g_consoleMessageListeners.push_back(ConsoleMessageListener{ callback, userData });
+    return TRUE;
+}
+
+BOOL RegisterConsoleMessageFilter(OynonConsoleMessageFilter filter, void* userData)
+{
+    if (!filter) {
+        return FALSE;
+    }
+
+    std::lock_guard<std::mutex> lock(g_listenerMutex);
+    const auto existing = std::find_if(
+        g_consoleMessageFilters.begin(),
+        g_consoleMessageFilters.end(),
+        [filter, userData](const ConsoleMessageFilter& listener) {
+            return listener.filter == filter && listener.userData == userData;
+        });
+    if (existing != g_consoleMessageFilters.end()) {
+        return TRUE;
+    }
+
+    g_consoleMessageFilters.push_back(ConsoleMessageFilter{ filter, userData });
     return TRUE;
 }

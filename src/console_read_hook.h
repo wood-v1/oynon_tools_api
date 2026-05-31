@@ -4,3 +4,4 @@
 
 bool InstallConsoleReadHooks(DWORD engineBase);
 BOOL RegisterConsoleMessageCallback(OynonConsoleMessageCallback callback, void* userData);
+BOOL RegisterConsoleMessageFilter(OynonConsoleMessageFilter filter, void* userData);

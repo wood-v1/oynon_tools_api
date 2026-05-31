@@ -23,6 +23,10 @@ Engine hooks wait for `Engine.dll` before installing. UI hooks are installed thr
 
 Registers a listener for console lines.
 
+`OynonRegisterConsoleMessageFilter(OynonConsoleMessageFilter filter, void* userData)`
+
+Registers a console-line filter. Return `TRUE` to suppress the line from the in-game console after listeners have received it.
+
 `OynonExecCommand(const char* command)`
 
 Executes a console command in the running game.

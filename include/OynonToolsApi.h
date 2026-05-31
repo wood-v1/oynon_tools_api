@@ -27,10 +27,12 @@ enum OynonHookFlags : DWORD
 };
 
 using OynonConsoleMessageCallback = void(__stdcall*)(const char* message, void* userData);
+using OynonConsoleMessageFilter = BOOL(__stdcall*)(const char* message, void* userData);
 
 OYNONTOOLS_API BOOL OynonInitializeHooksWhenReady(DWORD hookFlags);
 
 OYNONTOOLS_API BOOL OynonRegisterConsoleMessageCallback(OynonConsoleMessageCallback callback, void* userData);
+OYNONTOOLS_API BOOL OynonRegisterConsoleMessageFilter(OynonConsoleMessageFilter filter, void* userData);
 
 OYNONTOOLS_API BOOL OynonExecCommand(const char* command);
 

@@ -64,6 +64,11 @@ BOOL OynonRegisterConsoleMessageCallback(OynonConsoleMessageCallback callback, v
     return RegisterConsoleMessageCallback(callback, userData);
 }
 
+BOOL OynonRegisterConsoleMessageFilter(OynonConsoleMessageFilter filter, void* userData)
+{
+    return RegisterConsoleMessageFilter(filter, userData);
+}
+
 BOOL OynonExecCommand(const char* command)
 {
     return ExecuteConsoleCommand(command);
