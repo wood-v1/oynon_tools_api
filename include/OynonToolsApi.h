@@ -24,6 +24,7 @@ enum OynonHookFlags : DWORD
     OYNON_HOOK_MOVEMENT_VERTICAL = 1u << 3,
     OYNON_HOOK_UI_DAYCHANGE_TEXT = 1u << 4,
     OYNON_HOOK_UI_PLAYERSTAT_REDIRECT = 1u << 5,
+    OYNON_HOOK_PLAYER_SHOOTING_BLOCK = 1u << 6,
 };
 
 using OynonConsoleMessageCallback = void(__stdcall*)(const char* message, void* userData);
@@ -39,6 +40,7 @@ OYNONTOOLS_API BOOL OynonExecCommand(const char* command);
 OYNONTOOLS_API BOOL OynonSetMovementFrictionMultiplier(float frictionMultiplier);
 OYNONTOOLS_API BOOL OynonSetMovementJumpHeightMultiplier(float jumpHeightMultiplier);
 OYNONTOOLS_API BOOL OynonSetMovementLandingGravity(int landingGravity);
+OYNONTOOLS_API BOOL OynonSetPlayerShootingBlocked(BOOL blocked);
 
 OYNONTOOLS_API void OynonUIDaychangePoll();
 OYNONTOOLS_API void OynonUIDaychangeRequestRedirect(const char* xml, DWORD ttlMs);

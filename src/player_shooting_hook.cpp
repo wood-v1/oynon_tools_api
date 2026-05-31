@@ -1,0 +1,134 @@
+#include "player_shooting_hook.h"
+
+#include "inline_hook_utils.h"
+
+#include <array>
+#include <atomic>
+#include <cstdint>
+#include <cstring>
+
+namespace
+{
+constexpr std::uintptr_t SCRIPT_IS_SHOOTING_OFFSET = 0x0017B010;
+constexpr std::size_t SCRIPT_IS_SHOOTING_PATCH_SIZE = 6;
+constexpr std::uintptr_t PLAYER_START_SHOOTING_EVENT_OFFSET = 0x00187ED0;
+constexpr std::size_t PLAYER_START_SHOOTING_EVENT_PATCH_SIZE = 6;
+constexpr std::size_t SCRIPT_CONTEXT_PLAYER_OFFSET = 0x6C;
+constexpr std::size_t PLAYER_SHOOTING_OFFSET = 0x34;
+
+constexpr std::array<BYTE, SCRIPT_IS_SHOOTING_PATCH_SIZE> SCRIPT_IS_SHOOTING_EXPECTED = {
+    0x83, 0x7C, 0x24, 0x08, 0x01, 0x56
+};
+constexpr std::array<BYTE, PLAYER_START_SHOOTING_EVENT_PATCH_SIZE> PLAYER_START_SHOOTING_EVENT_EXPECTED = {
+    0x8B, 0x4C, 0x24, 0x04, 0x6A, 0x00
+};
+
+using ScriptIsShooting_t = bool(__thiscall*)(void* self, void** variables, unsigned long parameterCount, void* result);
+using PlayerStartShootingEvent_t = bool(__thiscall*)(void* self, void* script);
+
+InlineHook g_scriptIsShootingHook;
+ScriptIsShooting_t g_originalScriptIsShooting = nullptr;
+InlineHook g_playerStartShootingEventHook;
+PlayerStartShootingEvent_t g_originalPlayerStartShootingEvent = nullptr;
+std::atomic<bool> g_playerShootingBlocked{ false };
+
+bool __fastcall HookScriptIsShooting(
+    void* self,
+    void*,
+    void** variables,
+    unsigned long parameterCount,
+    void* result)
+{
+    if (!g_originalScriptIsShooting || !g_playerShootingBlocked.load() || !self) {
+        return g_originalScriptIsShooting
+            ? g_originalScriptIsShooting(self, variables, parameterCount, result)
+            : false;
+    }
+
+    BYTE* player = *reinterpret_cast<BYTE**>(
+        static_cast<BYTE*>(self) + SCRIPT_CONTEXT_PLAYER_OFFSET);
+    if (!player) {
+        return g_originalScriptIsShooting(self, variables, parameterCount, result);
+    }
+
+    const BYTE shooting = player[PLAYER_SHOOTING_OFFSET];
+    player[PLAYER_SHOOTING_OFFSET] = FALSE;
+    const bool success = g_originalScriptIsShooting(self, variables, parameterCount, result);
+    player[PLAYER_SHOOTING_OFFSET] = shooting;
+    return success;
+}
+
+bool __fastcall HookPlayerStartShootingEvent(void* self, void*, void* script)
+{
+    if (g_playerShootingBlocked.load()) {
+        return true;
+    }
+
+    return g_originalPlayerStartShootingEvent
+        ? g_originalPlayerStartShootingEvent(self, script)
+        : false;
+}
+}
+
+bool InstallPlayerShootingHook()
+{
+    if (g_scriptIsShootingHook.installed && g_playerStartShootingEventHook.installed) {
+        return true;
+    }
+
+    HMODULE game = ::GetModuleHandleA(nullptr);
+    if (!game) {
+        return false;
+    }
+
+    const std::uintptr_t target =
+        reinterpret_cast<std::uintptr_t>(game) + SCRIPT_IS_SHOOTING_OFFSET;
+    const std::uintptr_t startShootingEventTarget =
+        reinterpret_cast<std::uintptr_t>(game) + PLAYER_START_SHOOTING_EVENT_OFFSET;
+    if ((!g_scriptIsShootingHook.installed &&
+            std::memcmp(
+                reinterpret_cast<const void*>(target),
+                SCRIPT_IS_SHOOTING_EXPECTED.data(),
+                SCRIPT_IS_SHOOTING_EXPECTED.size()) != 0) ||
+        (!g_playerStartShootingEventHook.installed &&
+            std::memcmp(
+                reinterpret_cast<const void*>(startShootingEventTarget),
+                PLAYER_START_SHOOTING_EVENT_EXPECTED.data(),
+                PLAYER_START_SHOOTING_EVENT_EXPECTED.size()) != 0)) {
+        return false;
+    }
+
+    if (!g_scriptIsShootingHook.installed) {
+        g_scriptIsShootingHook.target = target;
+        g_scriptIsShootingHook.detour = reinterpret_cast<void*>(&HookScriptIsShooting);
+        g_scriptIsShootingHook.patchSize = SCRIPT_IS_SHOOTING_PATCH_SIZE;
+        if (!InstallInlineHook(g_scriptIsShootingHook)) {
+            return false;
+        }
+
+        g_originalScriptIsShooting =
+            reinterpret_cast<ScriptIsShooting_t>(g_scriptIsShootingHook.trampoline);
+    }
+
+    if (!g_playerStartShootingEventHook.installed) {
+        g_playerStartShootingEventHook.target = startShootingEventTarget;
+        g_playerStartShootingEventHook.detour =
+            reinterpret_cast<void*>(&HookPlayerStartShootingEvent);
+        g_playerStartShootingEventHook.patchSize = PLAYER_START_SHOOTING_EVENT_PATCH_SIZE;
+        if (!InstallInlineHook(g_playerStartShootingEventHook)) {
+            return false;
+        }
+
+        g_originalPlayerStartShootingEvent =
+            reinterpret_cast<PlayerStartShootingEvent_t>(
+                g_playerStartShootingEventHook.trampoline);
+    }
+
+    return true;
+}
+
+BOOL SetPlayerShootingBlocked(BOOL blocked)
+{
+    g_playerShootingBlocked.store(blocked != FALSE);
+    return TRUE;
+}

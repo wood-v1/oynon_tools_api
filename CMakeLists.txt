@@ -13,6 +13,7 @@ add_library(OynonTools SHARED
     src/movement_hooks.cpp
     src/OynonToolsApi.cpp
     src/oynontools_state.cpp
+    src/player_shooting_hook.cpp
     src/ui_daychange_hook.cpp
 )
 

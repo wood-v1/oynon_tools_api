@@ -5,6 +5,7 @@
 #include "debug.h"
 #include "movement_hooks.h"
 #include "oynontools_state.h"
+#include "player_shooting_hook.h"
 #include "ui_daychange_hook.h"
 
 BOOL OynonInitializeHooksWhenReady(DWORD hookFlags)
@@ -44,6 +45,10 @@ BOOL OynonInitializeHooksWhenReady(DWORD hookFlags)
     if ((hookFlags & (OYNON_HOOK_MOVEMENT_FRICTION | OYNON_HOOK_MOVEMENT_VERTICAL)) &&
         !InstallMovementHooks(resolvedBase, hookFlags)) {
         WriteDebugLog("PGOG", "Oynon init failed: movement hook install failed");
+        ok = FALSE;
+    }
+    if ((hookFlags & OYNON_HOOK_PLAYER_SHOOTING_BLOCK) && !InstallPlayerShootingHook()) {
+        WriteDebugLog("PGOG", "Oynon init failed: player shooting hook install failed");
         ok = FALSE;
     }
     if (hookFlags & (OYNON_HOOK_UI_DAYCHANGE_TEXT | OYNON_HOOK_UI_PLAYERSTAT_REDIRECT)) {
@@ -87,6 +92,11 @@ BOOL OynonSetMovementJumpHeightMultiplier(float jumpHeightMultiplier)
 BOOL OynonSetMovementLandingGravity(int landingGravity)
 {
     return SetMovementLandingGravity(landingGravity);
+}
+
+BOOL OynonSetPlayerShootingBlocked(BOOL blocked)
+{
+    return SetPlayerShootingBlocked(blocked);
 }
 
 void OynonUIDaychangePoll()

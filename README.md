@@ -16,6 +16,7 @@ Supported flags:
 - `OYNON_HOOK_MOVEMENT_VERTICAL` - enables jump height and landing gravity overrides.
 - `OYNON_HOOK_UI_DAYCHANGE_TEXT` - enables temporary redirection of `daychange.xml` to a custom UI XML.
 - `OYNON_HOOK_UI_PLAYERSTAT_REDIRECT` - enables persistent redirection of `playerstat.xml` to a custom UI XML.
+- `OYNON_HOOK_PLAYER_SHOOTING_BLOCK` - allows runtime suppression of the script-visible player shooting state.
 
 Engine hooks wait for `Engine.dll` before installing. UI hooks are installed through `UI.dll`; if `UI.dll` is not loaded yet, call `OynonUIDaychangePoll()` periodically until the hook is installed.
 
@@ -42,6 +43,10 @@ Changes jump height scaling. For sprint/jump feel tuning.
 `OynonSetMovementLandingGravity(int landingGravity)`
 
 Overrides landing gravity. For sprint/jump feel tuning.
+
+`OynonSetPlayerShootingBlocked(BOOL blocked)`
+
+Controls whether new player shooting events are suppressed and the player `IsShooting` script-native call reports `false`. This can stop script-driven attacks without changing the physical input state.
 
 `OynonUIDaychangePoll()`
 
