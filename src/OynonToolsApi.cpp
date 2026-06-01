@@ -5,11 +5,17 @@
 #include "debug.h"
 #include "movement_hooks.h"
 #include "oynontools_state.h"
+#include "player_effect_hook.h"
 #include "player_shooting_hook.h"
 #include "ui_daychange_hook.h"
+#include "ui_inventory_state.h"
+#include "ui_playerstat_redirect.h"
+#include "ui_window_hook.h"
 
 BOOL OynonInitializeHooksWhenReady(DWORD hookFlags)
 {
+    ConfigureLauncherDebugChannel("PGOG", FALSE);
+
     const DWORD engineHookFlags = hookFlags & (
         OYNON_HOOK_CONSOLE_READ | 
         OYNON_HOOK_CONSOLE_EXECUTE | 
@@ -51,11 +57,17 @@ BOOL OynonInitializeHooksWhenReady(DWORD hookFlags)
         WriteDebugLog("PGOG", "Oynon init failed: player shooting hook install failed");
         ok = FALSE;
     }
-    if (hookFlags & (OYNON_HOOK_UI_DAYCHANGE_TEXT | OYNON_HOOK_UI_PLAYERSTAT_REDIRECT)) {
+    if ((hookFlags & OYNON_HOOK_PLAYER_EFFECT_CALLBACK) && !InstallPlayerEffectHook()) {
+        WriteDebugLog("PGOG", "Oynon init failed: player effect hook install failed");
+        ok = FALSE;
+    }
+    if (hookFlags & (OYNON_HOOK_UI_DAYCHANGE_TEXT |
+        OYNON_HOOK_UI_PLAYERSTAT_REDIRECT |
+        OYNON_HOOK_UI_INVENTORY_STATE)) {
         if (::GetModuleHandleA("UI.dll") == nullptr) {
             WriteDebugLog("PGOG", "Oynon UI hook deferred until UI.dll loads");
         }
-        else if (!TryInstallUIDaychangeHook()) {
+        else if (!TryInstallUIWindowHook()) {
             WriteDebugLog("PGOG", "Oynon init failed: UI hook install failed");
             ok = FALSE;
         }
@@ -72,6 +84,16 @@ BOOL OynonRegisterConsoleMessageCallback(OynonConsoleMessageCallback callback, v
 BOOL OynonRegisterConsoleMessageFilter(OynonConsoleMessageFilter filter, void* userData)
 {
     return RegisterConsoleMessageFilter(filter, userData);
+}
+
+BOOL OynonRegisterPlayerEffectCallback(OynonPlayerEffectCallback callback, void* userData)
+{
+    return RegisterPlayerEffectCallback(callback, userData);
+}
+
+BOOL OynonRegisterInventoryStateCallback(OynonInventoryStateCallback callback, void* userData)
+{
+    return RegisterInventoryStateCallback(callback, userData);
 }
 
 BOOL OynonExecCommand(const char* command)
@@ -101,7 +123,7 @@ BOOL OynonSetPlayerShootingBlocked(BOOL blocked)
 
 void OynonUIDaychangePoll()
 {
-    PollUIDaychangeHook();
+    PollUIWindowHook();
 }
 
 void OynonUIDaychangeRequestRedirect(const char* xml, DWORD ttlMs)
@@ -117,6 +139,16 @@ BOOL OynonUIDaychangeIsVanillaActive(DWORD now)
 void OynonUIPlayerstatSetRedirect(const char* xml)
 {
     SetUIPlayerstatRedirect(xml);
+}
+
+void OynonUIInventoryPoll()
+{
+    PollUIInventoryState();
+}
+
+void OynonUIPoll()
+{
+    PollUIWindowHook();
 }
 
 BOOL OynonDebugConfigureChannel(const char* channelId, BOOL enabled, const char* logPath, const char* consoleCapturePath)

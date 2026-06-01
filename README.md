@@ -17,8 +17,10 @@ Supported flags:
 - `OYNON_HOOK_UI_DAYCHANGE_TEXT` - enables temporary redirection of `daychange.xml` to a custom UI XML.
 - `OYNON_HOOK_UI_PLAYERSTAT_REDIRECT` - enables persistent redirection of `playerstat.xml` to a custom UI XML.
 - `OYNON_HOOK_PLAYER_SHOOTING_BLOCK` - allows runtime suppression of the script-visible player shooting state.
+- `OYNON_HOOK_PLAYER_EFFECT_CALLBACK` - reports successful player effects after the game applies them.
+- `OYNON_HOOK_UI_INVENTORY_STATE` - reports opening and closing inventory-style UI overlays.
 
-Engine hooks wait for `Engine.dll` before installing. UI hooks are installed through `UI.dll`; if `UI.dll` is not loaded yet, call `OynonUIDaychangePoll()` periodically until the hook is installed.
+Engine hooks wait for `Engine.dll` before installing. UI hooks are installed through `UI.dll`; if `UI.dll` is not loaded yet, call `OynonUIPoll()` periodically until the hook is installed.
 
 `OynonRegisterConsoleMessageCallback(OynonConsoleMessageCallback callback, void* userData)`
 
@@ -48,9 +50,21 @@ Overrides landing gravity. For sprint/jump feel tuning.
 
 Controls whether new player shooting events are suppressed and the player `IsShooting` script-native call reports `false`. This can stop script-driven attacks without changing the physical input state.
 
+`OynonRegisterPlayerEffectCallback(OynonPlayerEffectCallback callback, void* userData)`
+
+Registers a listener for successful effects applied to the player. The callback runs after the original game method returns.
+
+`OynonRegisterInventoryStateCallback(OynonInventoryStateCallback callback, void* userData)`
+
+Registers a listener for inventory-style overlay state changes. The callback receives `TRUE` when an inventory, container, corpse, or apparatus overlay opens and `FALSE` when the corresponding UI station closes.
+
+`OynonUIPoll()`
+
+Retries installing the shared low-level UI window hooks if `UI.dll` was not ready during initial startup or if another UI reload replaced a patch. This neutral polling API is shared by daychange, playerstat, and inventory features.
+
 `OynonUIDaychangePoll()`
 
-Retries installing the shared UI hook if `UI.dll` was not ready during initial startup. This is used by both daychange and playerstat UI redirection.
+Compatibility wrapper for `OynonUIPoll()`. Existing mods may continue to call it.
 
 `OynonUIDaychangeRequestRedirect(const char* xml, DWORD ttlMs)`
 
@@ -65,6 +79,10 @@ Reports whether the vanilla daychange window is currently active or was just ope
 Redirects vanilla `playerstat.xml` window creation to a custom XML file. Pass `nullptr` or an empty string to clear the redirect.
 
 This redirect is persistent after it is configured. Request `OYNON_HOOK_UI_PLAYERSTAT_REDIRECT` during initialization, then call `OynonUIPlayerstatSetRedirect("my_playerstat.xml")` once your custom XML is available.
+
+`OynonUIInventoryPoll()`
+
+Polls inventory overlay classification and also retries installing the shared UI hooks. Call this periodically after requesting `OYNON_HOOK_UI_INVENTORY_STATE`.
 
 `OynonDebugConfigureChannel(const char* channelId, BOOL enabled, const char* logPath, const char* consoleCapturePath)`
 

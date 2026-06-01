@@ -13,8 +13,12 @@ add_library(OynonTools SHARED
     src/movement_hooks.cpp
     src/OynonToolsApi.cpp
     src/oynontools_state.cpp
+    src/player_effect_hook.cpp
     src/player_shooting_hook.cpp
     src/ui_daychange_hook.cpp
+    src/ui_inventory_state.cpp
+    src/ui_playerstat_redirect.cpp
+    src/ui_window_hook.cpp
 )
 
 target_compile_features(OynonTools PRIVATE cxx_std_17)
