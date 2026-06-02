@@ -7,6 +7,7 @@
 #include "oynontools_state.h"
 #include "player_effect_hook.h"
 #include "player_shooting_hook.h"
+#include "player_use_hook.h"
 #include "ui_daychange_hook.h"
 #include "ui_inventory_state.h"
 #include "ui_playerstat_redirect.h"
@@ -61,6 +62,10 @@ BOOL OynonInitializeHooksWhenReady(DWORD hookFlags)
         WriteDebugLog("PGOG", "Oynon init failed: player effect hook install failed");
         ok = FALSE;
     }
+    if ((hookFlags & OYNON_HOOK_PLAYER_USE_CALLBACK) && !InstallPlayerUseHook()) {
+        WriteDebugLog("PGOG", "Oynon init failed: player use hook install failed");
+        ok = FALSE;
+    }
     if (hookFlags & (OYNON_HOOK_UI_DAYCHANGE_TEXT |
         OYNON_HOOK_UI_PLAYERSTAT_REDIRECT |
         OYNON_HOOK_UI_INVENTORY_STATE)) {
@@ -94,6 +99,11 @@ BOOL OynonRegisterPlayerEffectCallback(OynonPlayerEffectCallback callback, void*
 BOOL OynonRegisterInventoryStateCallback(OynonInventoryStateCallback callback, void* userData)
 {
     return RegisterInventoryStateCallback(callback, userData);
+}
+
+BOOL OynonRegisterPlayerUseCallback(OynonPlayerUseCallback callback, void* userData)
+{
+    return RegisterPlayerUseCallback(callback, userData);
 }
 
 BOOL OynonExecCommand(const char* command)

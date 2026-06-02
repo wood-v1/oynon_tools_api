@@ -19,6 +19,7 @@ Supported flags:
 - `OYNON_HOOK_PLAYER_SHOOTING_BLOCK` - allows runtime suppression of the script-visible player shooting state.
 - `OYNON_HOOK_PLAYER_EFFECT_CALLBACK` - reports successful player effects after the game applies them.
 - `OYNON_HOOK_UI_INVENTORY_STATE` - reports opening and closing inventory-style UI overlays.
+- `OYNON_HOOK_PLAYER_USE_CALLBACK` - reports successful player interactions with the target script name.
 
 Engine hooks wait for `Engine.dll` before installing. UI hooks are installed through `UI.dll`; if `UI.dll` is not loaded yet, call `OynonUIPoll()` periodically until the hook is installed.
 
@@ -57,6 +58,10 @@ Registers a listener for successful effects applied to the player. The callback 
 `OynonRegisterInventoryStateCallback(OynonInventoryStateCallback callback, void* userData)`
 
 Registers a listener for inventory-style overlay state changes. The callback receives `TRUE` when an inventory, container, corpse, or apparatus overlay opens and `FALSE` when the corresponding UI station closes.
+
+`OynonRegisterPlayerUseCallback(OynonPlayerUseCallback callback, void* userData)`
+
+Registers a listener for successful player interactions. The callback receives the target object's script name after its `OnUse` event is accepted.
 
 `OynonUIPoll()`
 

@@ -27,12 +27,14 @@ enum OynonHookFlags : DWORD
     OYNON_HOOK_PLAYER_SHOOTING_BLOCK = 1u << 6,
     OYNON_HOOK_PLAYER_EFFECT_CALLBACK = 1u << 7,
     OYNON_HOOK_UI_INVENTORY_STATE = 1u << 8,
+    OYNON_HOOK_PLAYER_USE_CALLBACK = 1u << 9,
 };
 
 using OynonConsoleMessageCallback = void(__stdcall*)(const char* message, void* userData);
 using OynonConsoleMessageFilter = BOOL(__stdcall*)(const char* message, void* userData);
 using OynonPlayerEffectCallback = void(__stdcall*)(const char* effectName, void* userData);
 using OynonInventoryStateCallback = void(__stdcall*)(BOOL opened, void* userData);
+using OynonPlayerUseCallback = void(__stdcall*)(const char* scriptName, void* userData);
 
 OYNONTOOLS_API BOOL OynonInitializeHooksWhenReady(DWORD hookFlags);
 
@@ -40,6 +42,7 @@ OYNONTOOLS_API BOOL OynonRegisterConsoleMessageCallback(OynonConsoleMessageCallb
 OYNONTOOLS_API BOOL OynonRegisterConsoleMessageFilter(OynonConsoleMessageFilter filter, void* userData);
 OYNONTOOLS_API BOOL OynonRegisterPlayerEffectCallback(OynonPlayerEffectCallback callback, void* userData);
 OYNONTOOLS_API BOOL OynonRegisterInventoryStateCallback(OynonInventoryStateCallback callback, void* userData);
+OYNONTOOLS_API BOOL OynonRegisterPlayerUseCallback(OynonPlayerUseCallback callback, void* userData);
 
 OYNONTOOLS_API BOOL OynonExecCommand(const char* command);
 
