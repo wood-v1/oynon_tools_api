@@ -63,6 +63,10 @@ Registers a listener for inventory-style overlay state changes. The callback rec
 
 Registers a listener for successful player interactions. The callback receives the target object's script name after its `OnUse` event is accepted.
 
+`OynonRegisterPlayerShootingAttemptCallback(OynonPlayerShootingAttemptCallback callback, void* userData)`
+
+Registers a listener for player shooting attempts after requesting `OYNON_HOOK_PLAYER_SHOOTING_BLOCK`. The callback receives `FALSE` for a newly accepted shooting event and `TRUE` when an active script-driven attack requests another held-input iteration through `IsShooting`.
+
 `OynonUIPoll()`
 
 Retries installing the shared low-level UI window hooks if `UI.dll` was not ready during initial startup or if another UI reload replaced a patch. This neutral polling API is shared by daychange, playerstat, and inventory features.

@@ -2,10 +2,13 @@
 
 #include "inline_hook_utils.h"
 
+#include <algorithm>
 #include <array>
 #include <atomic>
 #include <cstdint>
 #include <cstring>
+#include <mutex>
+#include <vector>
 
 namespace
 {
@@ -32,6 +35,30 @@ InlineHook g_playerStartShootingEventHook;
 PlayerStartShootingEvent_t g_originalPlayerStartShootingEvent = nullptr;
 std::atomic<bool> g_playerShootingBlocked{ false };
 
+struct PlayerShootingAttemptListener
+{
+    OynonPlayerShootingAttemptCallback callback = nullptr;
+    void* userData = nullptr;
+};
+
+std::mutex g_listenerMutex;
+std::vector<PlayerShootingAttemptListener> g_playerShootingAttemptListeners;
+
+void DispatchPlayerShootingAttempt(BOOL repeated)
+{
+    std::vector<PlayerShootingAttemptListener> listeners;
+    {
+        std::lock_guard<std::mutex> lock(g_listenerMutex);
+        listeners = g_playerShootingAttemptListeners;
+    }
+
+    for (const PlayerShootingAttemptListener& listener : listeners) {
+        if (listener.callback) {
+            listener.callback(repeated, listener.userData);
+        }
+    }
+}
+
 bool __fastcall HookScriptIsShooting(
     void* self,
     void*,
@@ -40,9 +67,17 @@ bool __fastcall HookScriptIsShooting(
     void* result)
 {
     if (!g_originalScriptIsShooting || !g_playerShootingBlocked.load() || !self) {
-        return g_originalScriptIsShooting
+        const bool success = g_originalScriptIsShooting
             ? g_originalScriptIsShooting(self, variables, parameterCount, result)
             : false;
+        if (success && self) {
+            BYTE* player = *reinterpret_cast<BYTE**>(
+                static_cast<BYTE*>(self) + SCRIPT_CONTEXT_PLAYER_OFFSET);
+            if (player && player[PLAYER_SHOOTING_OFFSET]) {
+                DispatchPlayerShootingAttempt(TRUE);
+            }
+        }
+        return success;
     }
 
     BYTE* player = *reinterpret_cast<BYTE**>(
@@ -64,9 +99,13 @@ bool __fastcall HookPlayerStartShootingEvent(void* self, void*, void* script)
         return true;
     }
 
-    return g_originalPlayerStartShootingEvent
+    const bool success = g_originalPlayerStartShootingEvent
         ? g_originalPlayerStartShootingEvent(self, script)
         : false;
+    if (success) {
+        DispatchPlayerShootingAttempt(FALSE);
+    }
+    return success;
 }
 }
 
@@ -130,5 +169,29 @@ bool InstallPlayerShootingHook()
 BOOL SetPlayerShootingBlocked(BOOL blocked)
 {
     g_playerShootingBlocked.store(blocked != FALSE);
+    return TRUE;
+}
+
+BOOL RegisterPlayerShootingAttemptCallback(
+    OynonPlayerShootingAttemptCallback callback,
+    void* userData)
+{
+    if (!callback) {
+        return FALSE;
+    }
+
+    std::lock_guard<std::mutex> lock(g_listenerMutex);
+    const auto existing = std::find_if(
+        g_playerShootingAttemptListeners.begin(),
+        g_playerShootingAttemptListeners.end(),
+        [callback, userData](const PlayerShootingAttemptListener& listener) {
+            return listener.callback == callback && listener.userData == userData;
+        });
+    if (existing != g_playerShootingAttemptListeners.end()) {
+        return TRUE;
+    }
+
+    g_playerShootingAttemptListeners.push_back(
+        PlayerShootingAttemptListener{ callback, userData });
     return TRUE;
 }

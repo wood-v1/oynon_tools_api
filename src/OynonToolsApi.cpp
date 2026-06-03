@@ -106,6 +106,11 @@ BOOL OynonRegisterPlayerUseCallback(OynonPlayerUseCallback callback, void* userD
     return RegisterPlayerUseCallback(callback, userData);
 }
 
+BOOL OynonRegisterPlayerShootingAttemptCallback(OynonPlayerShootingAttemptCallback callback, void* userData)
+{
+    return RegisterPlayerShootingAttemptCallback(callback, userData);
+}
+
 BOOL OynonExecCommand(const char* command)
 {
     return ExecuteConsoleCommand(command);

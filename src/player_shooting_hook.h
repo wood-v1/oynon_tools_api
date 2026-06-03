@@ -4,3 +4,4 @@
 
 bool InstallPlayerShootingHook();
 BOOL SetPlayerShootingBlocked(BOOL blocked);
+BOOL RegisterPlayerShootingAttemptCallback(OynonPlayerShootingAttemptCallback callback, void* userData);
