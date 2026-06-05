@@ -15,6 +15,7 @@
 namespace
 {
 constexpr std::uintptr_t PLAYER_USE_EVENT_OFFSET = 0x00187FB0;
+constexpr std::uintptr_t PLAYER_USE_EVENT_GOG_OFFSET = 0x00188010;
 constexpr std::size_t PLAYER_USE_EVENT_PATCH_SIZE = 6;
 constexpr std::array<BYTE, 15> PLAYER_USE_EVENT_EXPECTED = {
     0x8B, 0x49, 0x08, 0x83, 0xEC, 0x10, 0x8B, 0x01,
@@ -36,6 +37,36 @@ InlineHook g_playerUseEventHook;
 PlayerUseEvent_t g_originalPlayerUseEvent = nullptr;
 std::mutex g_listenerMutex;
 std::vector<PlayerUseListener> g_playerUseListeners;
+
+bool MatchesPlayerUseEventPrologue(const BYTE* bytes)
+{
+    return std::memcmp(
+        bytes,
+        PLAYER_USE_EVENT_EXPECTED.data(),
+        PLAYER_USE_EVENT_EXPECTED.size()) == 0;
+}
+
+bool TryResolvePlayerUseEventTarget(HMODULE game, std::uintptr_t& out)
+{
+    const std::uintptr_t steamTarget =
+        reinterpret_cast<std::uintptr_t>(game) + PLAYER_USE_EVENT_OFFSET;
+    if (MatchesPlayerUseEventPrologue(reinterpret_cast<const BYTE*>(steamTarget))) {
+        out = steamTarget;
+        return true;
+    }
+
+    WriteDebugLog("PGOG", "Oynon player use Steam bytes rejected; Trying GOG version offsets");
+
+    const std::uintptr_t gogTarget =
+        reinterpret_cast<std::uintptr_t>(game) + PLAYER_USE_EVENT_GOG_OFFSET;
+    if (MatchesPlayerUseEventPrologue(reinterpret_cast<const BYTE*>(gogTarget))) {
+        WriteDebugLog("PGOG", "Oynon player use hook using GOG version offsets");
+        out = gogTarget;
+        return true;
+    }
+
+    return false;
+}
 
 bool HasBinSuffix(const char* scriptName, std::size_t length)
 {
@@ -134,12 +165,8 @@ bool InstallPlayerUseHook()
         return false;
     }
 
-    const std::uintptr_t target =
-        reinterpret_cast<std::uintptr_t>(game) + PLAYER_USE_EVENT_OFFSET;
-    if (std::memcmp(
-            reinterpret_cast<const void*>(target),
-            PLAYER_USE_EVENT_EXPECTED.data(),
-            PLAYER_USE_EVENT_EXPECTED.size()) != 0) {
+    std::uintptr_t target = 0;
+    if (!TryResolvePlayerUseEventTarget(game, target)) {
         WriteDebugLog("PGOG", "Oynon player use hook rejected unexpected Game.exe bytes");
         return false;
     }

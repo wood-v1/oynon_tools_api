@@ -12,6 +12,7 @@
 namespace
 {
 constexpr std::uintptr_t PLAYER_APPLY_EFFECT_OFFSET = 0x000D0D90;
+constexpr std::uintptr_t PLAYER_APPLY_EFFECT_GOG_OFFSET = 0x000D0DF0;
 constexpr std::size_t PLAYER_APPLY_EFFECT_PATCH_SIZE = 7;
 constexpr std::array<BYTE, 13> PLAYER_APPLY_EFFECT_EXPECTED = {
     0x6A, 0xFF, 0x68, 0x00, 0x00, 0x00, 0x00,
@@ -44,6 +45,28 @@ bool MatchesPlayerApplyEffectPrologue(const BYTE* bytes)
         }
     }
     return true;
+}
+
+bool TryResolvePlayerApplyEffectTarget(HMODULE game, std::uintptr_t& out)
+{
+    const std::uintptr_t steamTarget =
+        reinterpret_cast<std::uintptr_t>(game) + PLAYER_APPLY_EFFECT_OFFSET;
+    if (MatchesPlayerApplyEffectPrologue(reinterpret_cast<const BYTE*>(steamTarget))) {
+        out = steamTarget;
+        return true;
+    }
+
+    WriteDebugLog("PGOG", "Oynon player effect Steam bytes rejected; Trying GOG version offsets");
+
+    const std::uintptr_t gogTarget =
+        reinterpret_cast<std::uintptr_t>(game) + PLAYER_APPLY_EFFECT_GOG_OFFSET;
+    if (MatchesPlayerApplyEffectPrologue(reinterpret_cast<const BYTE*>(gogTarget))) {
+        WriteDebugLog("PGOG", "Oynon player effect hook using GOG version offsets");
+        out = gogTarget;
+        return true;
+    }
+
+    return false;
 }
 
 void DispatchPlayerEffect(const char* effectName)
@@ -88,9 +111,8 @@ bool InstallPlayerEffectHook()
         return false;
     }
 
-    const std::uintptr_t target =
-        reinterpret_cast<std::uintptr_t>(game) + PLAYER_APPLY_EFFECT_OFFSET;
-    if (!MatchesPlayerApplyEffectPrologue(reinterpret_cast<const BYTE*>(target))) {
+    std::uintptr_t target = 0;
+    if (!TryResolvePlayerApplyEffectTarget(game, target)) {
         WriteDebugLog("PGOG", "Oynon player effect hook rejected unexpected Game.exe bytes");
         return false;
     }

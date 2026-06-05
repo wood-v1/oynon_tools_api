@@ -1,5 +1,6 @@
 #include "player_shooting_hook.h"
 
+#include "debug.h"
 #include "inline_hook_utils.h"
 
 #include <algorithm>
@@ -13,6 +14,7 @@
 namespace
 {
 constexpr std::uintptr_t SCRIPT_IS_SHOOTING_OFFSET = 0x0017B010;
+constexpr std::uintptr_t SCRIPT_IS_SHOOTING_GOG_OFFSET = 0x0017B070;
 constexpr std::size_t SCRIPT_IS_SHOOTING_PATCH_SIZE = 6;
 constexpr std::uintptr_t PLAYER_START_SHOOTING_EVENT_OFFSET = 0x00187ED0;
 constexpr std::size_t PLAYER_START_SHOOTING_EVENT_PATCH_SIZE = 6;
@@ -43,6 +45,39 @@ struct PlayerShootingAttemptListener
 
 std::mutex g_listenerMutex;
 std::vector<PlayerShootingAttemptListener> g_playerShootingAttemptListeners;
+
+bool MatchesBytes(std::uintptr_t target, const BYTE* expected, std::size_t size)
+{
+    return std::memcmp(reinterpret_cast<const void*>(target), expected, size) == 0;
+}
+
+bool TryResolveScriptIsShootingTarget(HMODULE game, std::uintptr_t& out)
+{
+    const std::uintptr_t steamTarget =
+        reinterpret_cast<std::uintptr_t>(game) + SCRIPT_IS_SHOOTING_OFFSET;
+    if (MatchesBytes(
+            steamTarget,
+            SCRIPT_IS_SHOOTING_EXPECTED.data(),
+            SCRIPT_IS_SHOOTING_EXPECTED.size())) {
+        out = steamTarget;
+        return true;
+    }
+
+    WriteDebugLog("PGOG", "Oynon script IsShooting Steam bytes rejected; Trying GOG version offsets");
+
+    const std::uintptr_t gogTarget =
+        reinterpret_cast<std::uintptr_t>(game) + SCRIPT_IS_SHOOTING_GOG_OFFSET;
+    if (MatchesBytes(
+            gogTarget,
+            SCRIPT_IS_SHOOTING_EXPECTED.data(),
+            SCRIPT_IS_SHOOTING_EXPECTED.size())) {
+        WriteDebugLog("PGOG", "Oynon script IsShooting hook using GOG version offsets");
+        out = gogTarget;
+        return true;
+    }
+
+    return false;
+}
 
 void DispatchPlayerShootingAttempt(BOOL repeated)
 {
@@ -120,20 +155,21 @@ bool InstallPlayerShootingHook()
         return false;
     }
 
-    const std::uintptr_t target =
-        reinterpret_cast<std::uintptr_t>(game) + SCRIPT_IS_SHOOTING_OFFSET;
+    std::uintptr_t target = 0;
+    if (!g_scriptIsShootingHook.installed &&
+        !TryResolveScriptIsShootingTarget(game, target)) {
+        WriteDebugLog("PGOG", "Oynon init failed: script IsShooting hook rejected unexpected Game.exe bytes");
+        return false;
+    }
+
     const std::uintptr_t startShootingEventTarget =
         reinterpret_cast<std::uintptr_t>(game) + PLAYER_START_SHOOTING_EVENT_OFFSET;
-    if ((!g_scriptIsShootingHook.installed &&
-            std::memcmp(
-                reinterpret_cast<const void*>(target),
-                SCRIPT_IS_SHOOTING_EXPECTED.data(),
-                SCRIPT_IS_SHOOTING_EXPECTED.size()) != 0) ||
-        (!g_playerStartShootingEventHook.installed &&
-            std::memcmp(
-                reinterpret_cast<const void*>(startShootingEventTarget),
-                PLAYER_START_SHOOTING_EVENT_EXPECTED.data(),
-                PLAYER_START_SHOOTING_EVENT_EXPECTED.size()) != 0)) {
+    if (!g_playerStartShootingEventHook.installed &&
+        !MatchesBytes(
+            startShootingEventTarget,
+            PLAYER_START_SHOOTING_EVENT_EXPECTED.data(),
+            PLAYER_START_SHOOTING_EVENT_EXPECTED.size())) {
+        WriteDebugLog("PGOG", "Oynon init failed: player start-shooting hook rejected unexpected Game.exe bytes");
         return false;
     }
 
