@@ -1,5 +1,6 @@
 #include "ui_inventory_state.h"
 
+#include "ui_inventory_redirect.h"
 #include "ui_window_hook.h"
 
 #include <algorithm>
@@ -53,6 +54,7 @@ void DispatchInventoryState(bool opened)
 bool IsInventoryOverlayXml(const char* xml)
 {
     return std::strcmp(xml, VANILLA_INVENTORY_XML) == 0 ||
+        IsUIInventoryRedirectXml(xml) ||
         std::strcmp(xml, VANILLA_CONTAINER_XML) == 0 ||
         std::strcmp(xml, VANILLA_CORPSE_XML) == 0 ||
         std::strcmp(xml, VANILLA_APPARATUS_XML) == 0 ||

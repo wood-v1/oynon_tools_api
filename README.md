@@ -20,6 +20,7 @@ Supported flags:
 - `OYNON_HOOK_PLAYER_EFFECT_CALLBACK` - reports successful player effects after the game applies them.
 - `OYNON_HOOK_UI_INVENTORY_STATE` - reports opening and closing inventory-style UI overlays.
 - `OYNON_HOOK_PLAYER_USE_CALLBACK` - reports successful player interactions with the target script name.
+- `OYNON_HOOK_UI_INVENTORY_REDIRECT` - enables persistent redirection of the vanilla `inventory.xml` window to a custom UI XML.
 
 Engine hooks wait for `Engine.dll` before installing. UI hooks are installed through `UI.dll`; if `UI.dll` is not loaded yet, call `OynonUIPoll()` periodically until the hook is installed.
 
@@ -88,6 +89,13 @@ Reports whether the vanilla daychange window is currently active or was just ope
 Redirects vanilla `playerstat.xml` window creation to a custom XML file. Pass `nullptr` or an empty string to clear the redirect.
 
 This redirect is persistent after it is configured. Request `OYNON_HOOK_UI_PLAYERSTAT_REDIRECT` during initialization, then call `OynonUIPlayerstatSetRedirect("my_playerstat.xml")` once your custom XML is available.
+
+`OynonUIInventorySetRedirect(const char* xml)`
+
+Redirects vanilla `inventory.xml` window creation to a custom XML file. Container, corpse, apparatus, and doctor-apparatus windows are not redirected. Pass `nullptr` or an empty string to clear the redirect.
+
+This redirect is persistent after it is configured. Request `OYNON_HOOK_UI_INVENTORY_REDIRECT` during initialization, then call `OynonUIInventorySetRedirect("my_inventory.xml")` once your custom XML is available.
+Inventory-state classification treats the configured XML and its resolution variants, such as `my_inventory_1024x768.xml`, as inventory overlays.
 
 `OynonUIInventoryPoll()`
 

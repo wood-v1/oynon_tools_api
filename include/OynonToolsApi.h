@@ -28,6 +28,7 @@ enum OynonHookFlags : DWORD
     OYNON_HOOK_PLAYER_EFFECT_CALLBACK = 1u << 7,
     OYNON_HOOK_UI_INVENTORY_STATE = 1u << 8,
     OYNON_HOOK_PLAYER_USE_CALLBACK = 1u << 9,
+    OYNON_HOOK_UI_INVENTORY_REDIRECT = 1u << 10,
 };
 
 using OynonConsoleMessageCallback = void(__stdcall*)(const char* message, void* userData);
@@ -57,6 +58,7 @@ OYNONTOOLS_API void OynonUIDaychangePoll();
 OYNONTOOLS_API void OynonUIDaychangeRequestRedirect(const char* xml, DWORD ttlMs);
 OYNONTOOLS_API BOOL OynonUIDaychangeIsVanillaActive(DWORD now);
 OYNONTOOLS_API void OynonUIPlayerstatSetRedirect(const char* xml);
+OYNONTOOLS_API void OynonUIInventorySetRedirect(const char* xml);
 OYNONTOOLS_API void OynonUIInventoryPoll();
 OYNONTOOLS_API void OynonUIPoll();
 

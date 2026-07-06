@@ -9,6 +9,7 @@
 #include "player_shooting_hook.h"
 #include "player_use_hook.h"
 #include "ui_daychange_hook.h"
+#include "ui_inventory_redirect.h"
 #include "ui_inventory_state.h"
 #include "ui_playerstat_redirect.h"
 #include "ui_window_hook.h"
@@ -68,7 +69,8 @@ BOOL OynonInitializeHooksWhenReady(DWORD hookFlags)
     }
     if (hookFlags & (OYNON_HOOK_UI_DAYCHANGE_TEXT |
         OYNON_HOOK_UI_PLAYERSTAT_REDIRECT |
-        OYNON_HOOK_UI_INVENTORY_STATE)) {
+        OYNON_HOOK_UI_INVENTORY_STATE |
+        OYNON_HOOK_UI_INVENTORY_REDIRECT)) {
         if (::GetModuleHandleA("UI.dll") == nullptr) {
             WriteDebugLog("PGOG", "Oynon UI hook deferred until UI.dll loads");
         }
@@ -154,6 +156,11 @@ BOOL OynonUIDaychangeIsVanillaActive(DWORD now)
 void OynonUIPlayerstatSetRedirect(const char* xml)
 {
     SetUIPlayerstatRedirect(xml);
+}
+
+void OynonUIInventorySetRedirect(const char* xml)
+{
+    SetUIInventoryRedirect(xml);
 }
 
 void OynonUIInventoryPoll()

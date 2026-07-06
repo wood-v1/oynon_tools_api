@@ -4,6 +4,7 @@
 #include "inline_hook_utils.h"
 #include "oynontools_state.h"
 #include "ui_daychange_hook.h"
+#include "ui_inventory_redirect.h"
 #include "ui_inventory_state.h"
 #include "ui_playerstat_redirect.h"
 
@@ -54,7 +55,10 @@ void* __fastcall HookCreateWnd(void* self, void*, void* station, const char* xml
 {
     ObserveUIInventoryWindow(station, xml);
 
-    const char* resolvedXml = ResolveUIPlayerstatXml(xml);
+    const char* resolvedXml = ResolveUIInventoryXml(xml);
+    if (resolvedXml == xml) {
+        resolvedXml = ResolveUIPlayerstatXml(xml);
+    }
     if (resolvedXml == xml) {
         resolvedXml = ResolveUIDaychangeXml(xml, ::GetTickCount());
     }
@@ -145,7 +149,8 @@ void PollUIWindowHook()
 {
     const DWORD uiHookFlags = OYNON_HOOK_UI_DAYCHANGE_TEXT |
         OYNON_HOOK_UI_PLAYERSTAT_REDIRECT |
-        OYNON_HOOK_UI_INVENTORY_STATE;
+        OYNON_HOOK_UI_INVENTORY_STATE |
+        OYNON_HOOK_UI_INVENTORY_REDIRECT;
     if (!(GetRequestedHookFlags() & uiHookFlags)) {
         return;
     }
