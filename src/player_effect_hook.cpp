@@ -7,6 +7,7 @@
 #include <array>
 #include <cstring>
 #include <mutex>
+#include <string>
 #include <vector>
 
 namespace
@@ -35,6 +36,8 @@ InlineHook g_playerApplyEffectHook;
 PlayerApplyEffect_t g_originalPlayerApplyEffect = nullptr;
 std::mutex g_listenerMutex;
 std::vector<PlayerEffectListener> g_playerEffectListeners;
+std::string g_playerBootstrapEffect;
+void* g_bootstrappedPlayer = nullptr;
 
 bool MatchesPlayerApplyEffectPrologue(const BYTE* bytes)
 {
@@ -56,12 +59,12 @@ bool TryResolvePlayerApplyEffectTarget(HMODULE game, std::uintptr_t& out)
         return true;
     }
 
-    WriteDebugLog("PGOG", "Oynon player effect Steam bytes rejected; Trying GOG version offsets");
+    WriteDebugLog("OynonTools", "Oynon player effect Steam bytes rejected; Trying GOG version offsets");
 
     const std::uintptr_t gogTarget =
         reinterpret_cast<std::uintptr_t>(game) + PLAYER_APPLY_EFFECT_GOG_OFFSET;
     if (MatchesPlayerApplyEffectPrologue(reinterpret_cast<const BYTE*>(gogTarget))) {
-        WriteDebugLog("PGOG", "Oynon player effect hook using GOG version offsets");
+        WriteDebugLog("OynonTools", "Oynon player effect hook using GOG version offsets");
         out = gogTarget;
         return true;
     }
@@ -94,10 +97,41 @@ bool __fastcall HookPlayerApplyEffect(void* self, void*, const char* effectName,
         ? g_originalPlayerApplyEffect(self, effectName, params)
         : false;
     if (applied) {
+        std::string bootstrapEffect;
+        bool injectBootstrap = false;
+        {
+            std::lock_guard<std::mutex> lock(g_listenerMutex);
+            if (!g_playerBootstrapEffect.empty() && self != g_bootstrappedPlayer) {
+                g_bootstrappedPlayer = self;
+                bootstrapEffect = g_playerBootstrapEffect;
+                injectBootstrap = true;
+            }
+        }
+        if (injectBootstrap && effectName && bootstrapEffect != effectName && g_originalPlayerApplyEffect) {
+            const bool bootstrapApplied = g_originalPlayerApplyEffect(self, bootstrapEffect.c_str(), nullptr);
+            WriteDebugLog("OynonTools", bootstrapApplied
+                ? "Oynon player bootstrap effect applied"
+                : "Oynon player bootstrap effect rejected");
+        }
         DispatchPlayerEffect(effectName);
     }
     return applied;
 }
+
+}
+
+BOOL SetPlayerBootstrapEffect(const char* effectName)
+{
+    std::lock_guard<std::mutex> lock(g_listenerMutex);
+    g_playerBootstrapEffect = effectName ? effectName : "";
+    g_bootstrappedPlayer = nullptr;
+    return TRUE;
+}
+
+void* GetObservedPlayerObject()
+{
+    std::lock_guard<std::mutex> lock(g_listenerMutex);
+    return g_bootstrappedPlayer;
 }
 
 bool InstallPlayerEffectHook()
@@ -113,7 +147,7 @@ bool InstallPlayerEffectHook()
 
     std::uintptr_t target = 0;
     if (!TryResolvePlayerApplyEffectTarget(game, target)) {
-        WriteDebugLog("PGOG", "Oynon player effect hook rejected unexpected Game.exe bytes");
+        WriteDebugLog("OynonTools", "Oynon player effect hook rejected unexpected Game.exe bytes");
         return false;
     }
 
@@ -121,7 +155,7 @@ bool InstallPlayerEffectHook()
     g_playerApplyEffectHook.detour = reinterpret_cast<void*>(&HookPlayerApplyEffect);
     g_playerApplyEffectHook.patchSize = PLAYER_APPLY_EFFECT_PATCH_SIZE;
     if (!InstallInlineHook(g_playerApplyEffectHook)) {
-        WriteDebugLog("PGOG", "Oynon player effect hook install failed");
+        WriteDebugLog("OynonTools", "Oynon player effect hook install failed");
         return false;
     }
 

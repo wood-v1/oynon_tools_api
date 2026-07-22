@@ -55,12 +55,12 @@ bool TryResolvePlayerUseEventTarget(HMODULE game, std::uintptr_t& out)
         return true;
     }
 
-    WriteDebugLog("PGOG", "Oynon player use Steam bytes rejected; Trying GOG version offsets");
+    WriteDebugLog("OynonTools", "Oynon player use Steam bytes rejected; Trying GOG version offsets");
 
     const std::uintptr_t gogTarget =
         reinterpret_cast<std::uintptr_t>(game) + PLAYER_USE_EVENT_GOG_OFFSET;
     if (MatchesPlayerUseEventPrologue(reinterpret_cast<const BYTE*>(gogTarget))) {
-        WriteDebugLog("PGOG", "Oynon player use hook using GOG version offsets");
+        WriteDebugLog("OynonTools", "Oynon player use hook using GOG version offsets");
         out = gogTarget;
         return true;
     }
@@ -167,7 +167,7 @@ bool InstallPlayerUseHook()
 
     std::uintptr_t target = 0;
     if (!TryResolvePlayerUseEventTarget(game, target)) {
-        WriteDebugLog("PGOG", "Oynon player use hook rejected unexpected Game.exe bytes");
+        WriteDebugLog("OynonTools", "Oynon player use hook rejected unexpected Game.exe bytes");
         return false;
     }
 
@@ -175,7 +175,7 @@ bool InstallPlayerUseHook()
     g_playerUseEventHook.detour = reinterpret_cast<void*>(&HookPlayerUseEvent);
     g_playerUseEventHook.patchSize = PLAYER_USE_EVENT_PATCH_SIZE;
     if (!InstallInlineHook(g_playerUseEventHook)) {
-        WriteDebugLog("PGOG", "Oynon player use hook install failed");
+        WriteDebugLog("OynonTools", "Oynon player use hook install failed");
         return false;
     }
 

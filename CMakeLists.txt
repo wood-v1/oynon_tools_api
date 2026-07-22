@@ -14,6 +14,7 @@ add_library(OynonTools SHARED
     src/OynonToolsApi.cpp
     src/oynontools_state.cpp
     src/player_effect_hook.cpp
+    src/player_inventory_capacity_hook.cpp
     src/player_shooting_hook.cpp
     src/player_use_hook.cpp
     src/ui_daychange_hook.cpp

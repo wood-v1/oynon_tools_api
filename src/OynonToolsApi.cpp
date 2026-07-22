@@ -6,6 +6,7 @@
 #include "movement_hooks.h"
 #include "oynontools_state.h"
 #include "player_effect_hook.h"
+#include "player_inventory_capacity_hook.h"
 #include "player_shooting_hook.h"
 #include "player_use_hook.h"
 #include "ui_daychange_hook.h"
@@ -16,7 +17,7 @@
 
 BOOL OynonInitializeHooksWhenReady(DWORD hookFlags)
 {
-    ConfigureLauncherDebugChannel("PGOG", FALSE);
+    ConfigureLauncherDebugChannel("OynonTools", FALSE);
 
     const DWORD engineHookFlags = hookFlags & (
         OYNON_HOOK_CONSOLE_READ | 
@@ -35,7 +36,7 @@ BOOL OynonInitializeHooksWhenReady(DWORD hookFlags)
 
     const DWORD resolvedBase = ResolveAndStoreEngineBase(0);
     if (engineHookFlags != 0 && resolvedBase == 0) {
-        WriteDebugLog("PGOG", "Oynon init failed: Engine base resolution returned 0");
+        WriteDebugLog("OynonTools", "Oynon init failed: Engine base resolution returned 0");
         return FALSE;
     }
 
@@ -43,28 +44,32 @@ BOOL OynonInitializeHooksWhenReady(DWORD hookFlags)
 
     BOOL ok = TRUE;
     if ((hookFlags & OYNON_HOOK_CONSOLE_READ) && !InstallConsoleReadHooks(resolvedBase)) {
-        WriteDebugLog("PGOG", "Oynon init failed: console read hook install failed");
+        WriteDebugLog("OynonTools", "Oynon init failed: console read hook install failed");
         ok = FALSE;
     }
     if ((hookFlags & OYNON_HOOK_CONSOLE_EXECUTE) && !InstallConsoleExecuteHook(resolvedBase)) {
-        WriteDebugLog("PGOG", "Oynon init failed: console execute hook install failed");
+        WriteDebugLog("OynonTools", "Oynon init failed: console execute hook install failed");
         ok = FALSE;
     }
     if ((hookFlags & (OYNON_HOOK_MOVEMENT_FRICTION | OYNON_HOOK_MOVEMENT_VERTICAL)) &&
         !InstallMovementHooks(resolvedBase, hookFlags)) {
-        WriteDebugLog("PGOG", "Oynon init failed: movement hook install failed");
+        WriteDebugLog("OynonTools", "Oynon init failed: movement hook install failed");
         ok = FALSE;
     }
     if ((hookFlags & OYNON_HOOK_PLAYER_SHOOTING_BLOCK) && !InstallPlayerShootingHook()) {
-        WriteDebugLog("PGOG", "Oynon init failed: player shooting hook install failed");
+        WriteDebugLog("OynonTools", "Oynon init failed: player shooting hook install failed");
         ok = FALSE;
     }
     if ((hookFlags & OYNON_HOOK_PLAYER_EFFECT_CALLBACK) && !InstallPlayerEffectHook()) {
-        WriteDebugLog("PGOG", "Oynon init failed: player effect hook install failed");
+        WriteDebugLog("OynonTools", "Oynon init failed: player effect hook install failed");
+        ok = FALSE;
+    }
+    if ((hookFlags & OYNON_HOOK_PLAYER_INVENTORY_CAPACITY) && !InstallPlayerInventoryCapacityHook()) {
+        WriteDebugLog("OynonTools", "Oynon init failed: player inventory capacity hook install failed");
         ok = FALSE;
     }
     if ((hookFlags & OYNON_HOOK_PLAYER_USE_CALLBACK) && !InstallPlayerUseHook()) {
-        WriteDebugLog("PGOG", "Oynon init failed: player use hook install failed");
+        WriteDebugLog("OynonTools", "Oynon init failed: player use hook install failed");
         ok = FALSE;
     }
     if (hookFlags & (OYNON_HOOK_UI_DAYCHANGE_TEXT |
@@ -72,10 +77,10 @@ BOOL OynonInitializeHooksWhenReady(DWORD hookFlags)
         OYNON_HOOK_UI_INVENTORY_STATE |
         OYNON_HOOK_UI_INVENTORY_REDIRECT)) {
         if (::GetModuleHandleA("UI.dll") == nullptr) {
-            WriteDebugLog("PGOG", "Oynon UI hook deferred until UI.dll loads");
+            WriteDebugLog("OynonTools", "Oynon UI hook deferred until UI.dll loads");
         }
         else if (!TryInstallUIWindowHook()) {
-            WriteDebugLog("PGOG", "Oynon init failed: UI hook install failed");
+            WriteDebugLog("OynonTools", "Oynon init failed: UI hook install failed");
             ok = FALSE;
         }
     }
@@ -111,6 +116,21 @@ BOOL OynonRegisterPlayerUseCallback(OynonPlayerUseCallback callback, void* userD
 BOOL OynonRegisterPlayerShootingAttemptCallback(OynonPlayerShootingAttemptCallback callback, void* userData)
 {
     return RegisterPlayerShootingAttemptCallback(callback, userData);
+}
+
+BOOL OynonSetPlayerBootstrapEffect(const char* effectName)
+{
+    return SetPlayerBootstrapEffect(effectName);
+}
+
+BOOL OynonSetPlayerInventoryCategoryCapacity(DWORD capacity)
+{
+    return ConfigurePlayerInventoryCategoryCapacity(capacity);
+}
+
+BOOL OynonSetWorldContainerCapacity(DWORD capacity)
+{
+    return ConfigureWorldContainerCapacity(capacity);
 }
 
 BOOL OynonExecCommand(const char* command)
@@ -161,6 +181,11 @@ void OynonUIPlayerstatSetRedirect(const char* xml)
 void OynonUIInventorySetRedirect(const char* xml)
 {
     SetUIInventoryRedirect(xml);
+}
+
+void OynonUILootSetRedirects(const char* containerXml, const char* corpseXml)
+{
+    SetUILootRedirects(containerXml, corpseXml);
 }
 
 void OynonUIInventoryPoll()

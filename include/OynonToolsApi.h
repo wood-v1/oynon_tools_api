@@ -29,6 +29,7 @@ enum OynonHookFlags : DWORD
     OYNON_HOOK_UI_INVENTORY_STATE = 1u << 8,
     OYNON_HOOK_PLAYER_USE_CALLBACK = 1u << 9,
     OYNON_HOOK_UI_INVENTORY_REDIRECT = 1u << 10,
+    OYNON_HOOK_PLAYER_INVENTORY_CAPACITY = 1u << 11,
 };
 
 using OynonConsoleMessageCallback = void(__stdcall*)(const char* message, void* userData);
@@ -46,6 +47,9 @@ OYNONTOOLS_API BOOL OynonRegisterPlayerEffectCallback(OynonPlayerEffectCallback 
 OYNONTOOLS_API BOOL OynonRegisterInventoryStateCallback(OynonInventoryStateCallback callback, void* userData);
 OYNONTOOLS_API BOOL OynonRegisterPlayerUseCallback(OynonPlayerUseCallback callback, void* userData);
 OYNONTOOLS_API BOOL OynonRegisterPlayerShootingAttemptCallback(OynonPlayerShootingAttemptCallback callback, void* userData);
+OYNONTOOLS_API BOOL OynonSetPlayerBootstrapEffect(const char* effectName);
+OYNONTOOLS_API BOOL OynonSetPlayerInventoryCategoryCapacity(DWORD capacity);
+OYNONTOOLS_API BOOL OynonSetWorldContainerCapacity(DWORD capacity);
 
 OYNONTOOLS_API BOOL OynonExecCommand(const char* command);
 
@@ -59,6 +63,7 @@ OYNONTOOLS_API void OynonUIDaychangeRequestRedirect(const char* xml, DWORD ttlMs
 OYNONTOOLS_API BOOL OynonUIDaychangeIsVanillaActive(DWORD now);
 OYNONTOOLS_API void OynonUIPlayerstatSetRedirect(const char* xml);
 OYNONTOOLS_API void OynonUIInventorySetRedirect(const char* xml);
+OYNONTOOLS_API void OynonUILootSetRedirects(const char* containerXml, const char* corpseXml);
 OYNONTOOLS_API void OynonUIInventoryPoll();
 OYNONTOOLS_API void OynonUIPoll();
 

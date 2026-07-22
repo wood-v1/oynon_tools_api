@@ -26,7 +26,7 @@ constexpr std::array<BYTE, 5> UI_CREATE_WND_EXPECTED = {
 constexpr std::array<BYTE, 6> UI_REMOVE_WND_STATION_EXPECTED = {
     0x57, 0x8B, 0xF9, 0x8B, 0x57, 0x20
 };
-constexpr const char* PGOG_DEBUG_CHANNEL = "PGOG";
+constexpr const char* OYNONTOOLS_DEBUG_CHANNEL = "OynonTools";
 
 InlineHook g_createWndHook;
 InlineHook g_removeWndStationHook;
@@ -100,17 +100,17 @@ bool TryInstallUIWindowHook()
                 reinterpret_cast<const void*>(g_createWndHook.target),
                 UI_CREATE_WND_EXPECTED.data(),
                 UI_CREATE_WND_EXPECTED.size()) != 0) {
-            WriteDebugLog(PGOG_DEBUG_CHANNEL, "Oynon UI create-window hook rejected unexpected UI.dll bytes");
+            WriteDebugLog(OYNONTOOLS_DEBUG_CHANNEL, "Oynon UI create-window hook rejected unexpected UI.dll bytes");
             return false;
         }
 
         if (!InstallInlineHook(g_createWndHook)) {
-            WriteDebugLog(PGOG_DEBUG_CHANNEL, "Oynon UI create-window hook install failed");
+            WriteDebugLog(OYNONTOOLS_DEBUG_CHANNEL, "Oynon UI create-window hook install failed");
             return false;
         }
 
         g_originalCreateWnd = reinterpret_cast<CreateWnd_t>(g_createWndHook.trampoline);
-        WriteDebugLog(PGOG_DEBUG_CHANNEL, "Oynon UI create-window hook installed");
+        WriteDebugLog(OYNONTOOLS_DEBUG_CHANNEL, "Oynon UI create-window hook installed");
     }
 
     if (inventoryHookRequested && !g_removeWndStationHook.installed) {
@@ -123,18 +123,18 @@ bool TryInstallUIWindowHook()
                 reinterpret_cast<const void*>(g_removeWndStationHook.target),
                 UI_REMOVE_WND_STATION_EXPECTED.data(),
                 UI_REMOVE_WND_STATION_EXPECTED.size()) != 0) {
-            WriteDebugLog(PGOG_DEBUG_CHANNEL, "Oynon UI remove-station hook rejected unexpected UI.dll bytes");
+            WriteDebugLog(OYNONTOOLS_DEBUG_CHANNEL, "Oynon UI remove-station hook rejected unexpected UI.dll bytes");
             return false;
         }
 
         if (!InstallInlineHook(g_removeWndStationHook)) {
-            WriteDebugLog(PGOG_DEBUG_CHANNEL, "Oynon UI remove-station hook install failed");
+            WriteDebugLog(OYNONTOOLS_DEBUG_CHANNEL, "Oynon UI remove-station hook install failed");
             return false;
         }
 
         g_originalRemoveWndStation =
             reinterpret_cast<RemoveWndStation_t>(g_removeWndStationHook.trampoline);
-        WriteDebugLog(PGOG_DEBUG_CHANNEL, "Oynon UI remove-station hook installed");
+        WriteDebugLog(OYNONTOOLS_DEBUG_CHANNEL, "Oynon UI remove-station hook installed");
     }
 
     return true;
@@ -167,12 +167,12 @@ void PollUIWindowHook()
     }
 
     if (g_createWndHook.installed && !createWndHookPatched) {
-        WriteDebugLog(PGOG_DEBUG_CHANNEL, "Oynon UI create-window hook patch was lost, retrying install");
+        WriteDebugLog(OYNONTOOLS_DEBUG_CHANNEL, "Oynon UI create-window hook patch was lost, retrying install");
         g_createWndHook.installed = false;
         g_originalCreateWnd = nullptr;
     }
     if (g_removeWndStationHook.installed && !removeWndStationHookPatched) {
-        WriteDebugLog(PGOG_DEBUG_CHANNEL, "Oynon UI remove-station hook patch was lost, retrying install");
+        WriteDebugLog(OYNONTOOLS_DEBUG_CHANNEL, "Oynon UI remove-station hook patch was lost, retrying install");
         g_removeWndStationHook.installed = false;
         g_originalRemoveWndStation = nullptr;
     }

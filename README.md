@@ -21,6 +21,7 @@ Supported flags:
 - `OYNON_HOOK_UI_INVENTORY_STATE` - reports opening and closing inventory-style UI overlays.
 - `OYNON_HOOK_PLAYER_USE_CALLBACK` - reports successful player interactions with the target script name.
 - `OYNON_HOOK_UI_INVENTORY_REDIRECT` - enables persistent redirection of the vanilla `inventory.xml` window to a custom UI XML.
+- `OYNON_HOOK_PLAYER_INVENTORY_CAPACITY` - removes the native 12-stack category rejection only for the five-subcontainer player inventory.
 
 Engine hooks wait for `Engine.dll` before installing. UI hooks are installed through `UI.dll`; if `UI.dll` is not loaded yet, call `OynonUIPoll()` periodically until the hook is installed.
 
@@ -55,6 +56,18 @@ Controls whether new player shooting events are suppressed and the player `IsSho
 `OynonRegisterPlayerEffectCallback(OynonPlayerEffectCallback callback, void* userData)`
 
 Registers a listener for successful effects applied to the player. The callback runs after the original game method returns.
+
+`OynonSetPlayerBootstrapEffect(const char* effectName)`
+
+Configures one compiled effect to be applied once to each newly created player actor. Configure it before initializing `OYNON_HOOK_PLAYER_EFFECT_CALLBACK`.
+
+`OynonSetPlayerInventoryCategoryCapacity(DWORD capacity)`
+
+Configures the player-only category-capacity override (12..64). The native category check is bypassed when the configured value is above the vanilla value; the caller remains responsible for enforcing its overall inventory limit.
+
+`OynonSetWorldContainerCapacity(DWORD capacity)`
+
+Configures the native `AddItem` capacity override for non-player world containers (12..128). The caller remains responsible for enforcing its chosen visible or gameplay limit.
 
 `OynonRegisterInventoryStateCallback(OynonInventoryStateCallback callback, void* userData)`
 
@@ -92,10 +105,14 @@ This redirect is persistent after it is configured. Request `OYNON_HOOK_UI_PLAYE
 
 `OynonUIInventorySetRedirect(const char* xml)`
 
-Redirects vanilla `inventory.xml` window creation to a custom XML file. Container, corpse, apparatus, and doctor-apparatus windows are not redirected. Pass `nullptr` or an empty string to clear the redirect.
+Redirects vanilla `inventory.xml` window creation to a custom XML file. Apparatus and doctor-apparatus windows are not redirected. Pass `nullptr` or an empty string to clear the redirect.
 
 This redirect is persistent after it is configured. Request `OYNON_HOOK_UI_INVENTORY_REDIRECT` during initialization, then call `OynonUIInventorySetRedirect("my_inventory.xml")` once your custom XML is available.
 Inventory-state classification treats the configured XML and its resolution variants, such as `my_inventory_1024x768.xml`, as inventory overlays.
+
+`OynonUILootSetRedirects(const char* containerXml, const char* corpseXml)`
+
+Redirects vanilla `container.xml` and `corpse.xml` window creation independently. Either redirect can be cleared with `nullptr` or an empty string. These redirects use the same persistent inventory UI hook and participate in inventory-overlay state classification.
 
 `OynonUIInventoryPoll()`
 
