@@ -193,6 +193,11 @@ void OynonUIInventoryPoll()
     PollUIInventoryState();
 }
 
+DWORD OynonUIInventoryGetOverlayKind()
+{
+    return GetUIInventoryOverlayKind();
+}
+
 void OynonUIPoll()
 {
     PollUIWindowHook();

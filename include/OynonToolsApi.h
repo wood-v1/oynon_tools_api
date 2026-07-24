@@ -32,6 +32,15 @@ enum OynonHookFlags : DWORD
     OYNON_HOOK_PLAYER_INVENTORY_CAPACITY = 1u << 11,
 };
 
+enum OynonInventoryOverlayKind : DWORD
+{
+    OYNON_INVENTORY_OVERLAY_NONE = 0,
+    OYNON_INVENTORY_OVERLAY_PLAYER = 1,
+    OYNON_INVENTORY_OVERLAY_CONTAINER = 2,
+    OYNON_INVENTORY_OVERLAY_CORPSE = 3,
+    OYNON_INVENTORY_OVERLAY_OTHER = 4,
+};
+
 using OynonConsoleMessageCallback = void(__stdcall*)(const char* message, void* userData);
 using OynonConsoleMessageFilter = BOOL(__stdcall*)(const char* message, void* userData);
 using OynonPlayerEffectCallback = void(__stdcall*)(const char* effectName, void* userData);
@@ -65,6 +74,7 @@ OYNONTOOLS_API void OynonUIPlayerstatSetRedirect(const char* xml);
 OYNONTOOLS_API void OynonUIInventorySetRedirect(const char* xml);
 OYNONTOOLS_API void OynonUILootSetRedirects(const char* containerXml, const char* corpseXml);
 OYNONTOOLS_API void OynonUIInventoryPoll();
+OYNONTOOLS_API DWORD OynonUIInventoryGetOverlayKind();
 OYNONTOOLS_API void OynonUIPoll();
 
 OYNONTOOLS_API BOOL OynonDebugConfigureChannel(const char* channelId, BOOL enabled, const char* logPath, const char* consoleCapturePath);

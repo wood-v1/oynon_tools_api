@@ -118,6 +118,18 @@ Redirects vanilla `container.xml` and `corpse.xml` window creation independently
 
 Polls inventory overlay classification and also retries installing the shared UI hooks. Call this periodically after requesting `OYNON_HOOK_UI_INVENTORY_STATE`.
 
+`OynonUIInventoryGetOverlayKind()`
+
+Returns the currently active inventory-style overlay:
+
+- `OYNON_INVENTORY_OVERLAY_NONE` - no tracked inventory overlay is open.
+- `OYNON_INVENTORY_OVERLAY_PLAYER` - the player inventory is open.
+- `OYNON_INVENTORY_OVERLAY_CONTAINER` - a world container is open.
+- `OYNON_INVENTORY_OVERLAY_CORPSE` - a corpse inventory is open.
+- `OYNON_INVENTORY_OVERLAY_OTHER` - another tracked inventory-style window, such as an apparatus, is open.
+
+Request `OYNON_HOOK_UI_INVENTORY_STATE` and call `OynonUIInventoryPoll()` periodically before reading this value. Redirected inventory, container, and corpse XML files retain their corresponding overlay kinds.
+
 `OynonDebugConfigureChannel(const char* channelId, BOOL enabled, const char* logPath, const char* consoleCapturePath)`
 
 Configures a debug channel manually. When enabled, `OynonDebugLog` writes to `logPath`. If `consoleCapturePath` is not empty, console-capture lines can be appended there too.

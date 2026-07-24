@@ -31,6 +31,8 @@ void* g_inventoryCandidateStation = nullptr;
 void* g_inventoryOverlayStation = nullptr;
 DWORD g_inventoryCandidateTick = 0;
 std::atomic<bool> g_inventoryOverlayOpen{ false };
+std::atomic<DWORD> g_inventoryOverlayKind{ OYNON_INVENTORY_OVERLAY_NONE };
+DWORD g_inventoryCandidateKind = OYNON_INVENTORY_OVERLAY_NONE;
 
 void DispatchInventoryState(bool opened)
 {
@@ -60,6 +62,20 @@ bool IsInventoryOverlayXml(const char* xml)
         std::strcmp(xml, VANILLA_APPARATUS_XML) == 0 ||
         std::strcmp(xml, VANILLA_DOCTOR_APPARATUS_XML) == 0;
 }
+
+DWORD ClassifyInventoryOverlayXml(const char* xml)
+{
+    if (std::strcmp(xml, VANILLA_INVENTORY_XML) == 0) {
+        return OYNON_INVENTORY_OVERLAY_PLAYER;
+    }
+    if (std::strcmp(xml, VANILLA_CONTAINER_XML) == 0) {
+        return OYNON_INVENTORY_OVERLAY_CONTAINER;
+    }
+    if (std::strcmp(xml, VANILLA_CORPSE_XML) == 0) {
+        return OYNON_INVENTORY_OVERLAY_CORPSE;
+    }
+    return OYNON_INVENTORY_OVERLAY_OTHER;
+}
 }
 
 void ObserveUIInventoryWindow(void* station, const char* xml)
@@ -72,6 +88,7 @@ void ObserveUIInventoryWindow(void* station, const char* xml)
     if (IsInventoryOverlayXml(xml)) {
         g_inventoryCandidateStation = station;
         g_inventoryCandidateTick = ::GetTickCount();
+        g_inventoryCandidateKind = ClassifyInventoryOverlayXml(xml);
     }
 }
 
@@ -83,9 +100,11 @@ void ObserveUIInventoryStationRemoved(void* station)
         if (station == g_inventoryCandidateStation) {
             g_inventoryCandidateStation = nullptr;
             g_inventoryCandidateTick = 0;
+            g_inventoryCandidateKind = OYNON_INVENTORY_OVERLAY_NONE;
         }
         if (station == g_inventoryOverlayStation) {
             g_inventoryOverlayStation = nullptr;
+            g_inventoryOverlayKind.store(OYNON_INVENTORY_OVERLAY_NONE);
             closedInventoryOverlay = true;
         }
     }
@@ -133,13 +152,20 @@ void PollUIInventoryState()
         }
 
         g_inventoryOverlayStation = g_inventoryCandidateStation;
+        g_inventoryOverlayKind.store(g_inventoryCandidateKind);
         openedInventoryOverlay = true;
 
         g_inventoryCandidateStation = nullptr;
         g_inventoryCandidateTick = 0;
+        g_inventoryCandidateKind = OYNON_INVENTORY_OVERLAY_NONE;
     }
 
     if (openedInventoryOverlay) {
         DispatchInventoryState(true);
     }
+}
+
+DWORD GetUIInventoryOverlayKind()
+{
+    return g_inventoryOverlayKind.load();
 }
