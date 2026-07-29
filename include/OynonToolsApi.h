@@ -30,6 +30,7 @@ enum OynonHookFlags : DWORD
     OYNON_HOOK_PLAYER_USE_CALLBACK = 1u << 9,
     OYNON_HOOK_UI_INVENTORY_REDIRECT = 1u << 10,
     OYNON_HOOK_PLAYER_INVENTORY_CAPACITY = 1u << 11,
+    OYNON_HOOK_UI_WINDOW_PREPARE = 1u << 12,
 };
 
 enum OynonInventoryOverlayKind : DWORD
@@ -45,6 +46,7 @@ using OynonConsoleMessageCallback = void(__stdcall*)(const char* message, void* 
 using OynonConsoleMessageFilter = BOOL(__stdcall*)(const char* message, void* userData);
 using OynonPlayerEffectCallback = void(__stdcall*)(const char* effectName, void* userData);
 using OynonInventoryStateCallback = void(__stdcall*)(BOOL opened, void* userData);
+using OynonUIWindowPrepareCallback = void(__stdcall*)(const char* xml, void* userData);
 using OynonPlayerUseCallback = void(__stdcall*)(const char* scriptName, void* userData);
 using OynonPlayerShootingAttemptCallback = void(__stdcall*)(BOOL repeated, void* userData);
 
@@ -54,11 +56,20 @@ OYNONTOOLS_API BOOL OynonRegisterConsoleMessageCallback(OynonConsoleMessageCallb
 OYNONTOOLS_API BOOL OynonRegisterConsoleMessageFilter(OynonConsoleMessageFilter filter, void* userData);
 OYNONTOOLS_API BOOL OynonRegisterPlayerEffectCallback(OynonPlayerEffectCallback callback, void* userData);
 OYNONTOOLS_API BOOL OynonRegisterInventoryStateCallback(OynonInventoryStateCallback callback, void* userData);
+OYNONTOOLS_API BOOL OynonRegisterUIWindowPrepareCallback(OynonUIWindowPrepareCallback callback, void* userData);
 OYNONTOOLS_API BOOL OynonRegisterPlayerUseCallback(OynonPlayerUseCallback callback, void* userData);
 OYNONTOOLS_API BOOL OynonRegisterPlayerShootingAttemptCallback(OynonPlayerShootingAttemptCallback callback, void* userData);
 OYNONTOOLS_API BOOL OynonSetPlayerBootstrapEffect(const char* effectName);
 OYNONTOOLS_API BOOL OynonSetPlayerInventoryCategoryCapacity(DWORD capacity);
 OYNONTOOLS_API BOOL OynonSetWorldContainerCapacity(DWORD capacity);
+OYNONTOOLS_API BOOL OynonStablePrioritizePlayerInventory(
+    const DWORD* priorityItemIds,
+    DWORD priorityItemIdCount,
+    DWORD* oldToNewIndices,
+    DWORD mappingCapacity,
+    DWORD* categoryItemCounts,
+    DWORD categoryCount,
+    BOOL* changed);
 
 OYNONTOOLS_API BOOL OynonExecCommand(const char* command);
 

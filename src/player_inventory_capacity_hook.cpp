@@ -9,6 +9,7 @@
 #include <cstdint>
 #include <cstring>
 #include <array>
+#include <vector>
 
 namespace
 {
@@ -22,6 +23,7 @@ constexpr DWORD MAX_CATEGORY_CAPACITY = 64;
 constexpr DWORD MAX_WORLD_CONTAINER_CAPACITY = 128;
 constexpr DWORD PLAYER_CONTAINER_HASH = 0x0C06562A;
 constexpr unsigned int PLAYER_CATEGORY_COUNT = 5;
+constexpr unsigned int PLAYER_CATEGORY_MAPPING_STRIDE = 64;
 constexpr BYTE CAPACITY_CHECK_PATTERN[] = {
     0x85, 0xFF, 0x0F, 0x95, 0xC1, 0x03, 0xCB, 0x3B, 0xCA, 0x76
 };
@@ -40,6 +42,33 @@ using DirectPlayerAddItem_t = bool(__thiscall*)(
     void* argument2,
     void* argument3,
     void* argument4);
+using GetCategoryItemCount_t = unsigned int(__thiscall*)(void* self);
+
+struct NativeInventoryItem
+{
+    DWORD itemId = 0;
+    void* definition = nullptr;
+};
+
+using GetCategoryItem_t = void(__thiscall*)(
+    void* self,
+    NativeInventoryItem* item,
+    unsigned int index,
+    unsigned int* amount);
+using SetCategoryItem_t = void(__thiscall*)(
+    void* self,
+    unsigned int index,
+    const NativeInventoryItem* item,
+    unsigned int amount);
+using RetainInterface_t = void*(__thiscall*)(void* self);
+using ReleaseInterface_t = void(__thiscall*)(void* self);
+
+struct StableInventoryEntry
+{
+    NativeInventoryItem item;
+    unsigned int amount = 0;
+    unsigned int sourceIndex = 0;
+};
 
 struct CapacityVtablePatch
 {
@@ -127,6 +156,106 @@ bool IsReadableMemory(const void* address, std::size_t size)
     const std::uintptr_t regionEnd =
         reinterpret_cast<std::uintptr_t>(memory.BaseAddress) + memory.RegionSize;
     return end >= begin && end <= regionEnd;
+}
+
+template <std::size_t Size>
+bool MatchesCode(const void* address, const std::array<BYTE, Size>& expected)
+{
+    const BYTE* code = static_cast<const BYTE*>(address);
+    for (unsigned int depth = 0; depth < 3; ++depth) {
+        if (!IsReadableMemory(code, expected.size())) {
+            return false;
+        }
+        if (std::memcmp(code, expected.data(), expected.size()) == 0) {
+            return true;
+        }
+        if (code[0] != 0xE9 || !IsReadableMemory(code, 5)) {
+            return false;
+        }
+        const std::int32_t relative = *reinterpret_cast<const std::int32_t*>(code + 1);
+        code = code + 5 + relative;
+    }
+    return false;
+}
+
+bool ValidateCategoryReorderMethods(
+    void* category,
+    GetCategoryItemCount_t& getCount,
+    GetCategoryItem_t& getItem,
+    SetCategoryItem_t& setItem)
+{
+    constexpr std::array<BYTE, 10> GET_COUNT_EXPECTED = {
+        0x8B, 0x41, 0x10, 0x2B, 0x41, 0x0C, 0xC1, 0xF8, 0x05, 0xC3
+    };
+    constexpr std::array<BYTE, 8> GET_ITEM_EXPECTED = {
+        0x8B, 0xD1, 0x8B, 0x4C, 0x24, 0x08, 0x8B, 0x42
+    };
+    constexpr std::array<BYTE, 12> SET_ITEM_EXPECTED = {
+        0x55, 0x8B, 0x6C, 0x24, 0x10, 0x56,
+        0x8B, 0x74, 0x24, 0x0C, 0x57, 0x8B
+    };
+
+    if (!IsReadableMemory(category, sizeof(void*))) {
+        return false;
+    }
+    void** vtable = *reinterpret_cast<void***>(category);
+    if (!IsReadableMemory(vtable, sizeof(void*) * 13)) {
+        return false;
+    }
+
+    getCount = reinterpret_cast<GetCategoryItemCount_t>(vtable[5]);
+    getItem = reinterpret_cast<GetCategoryItem_t>(vtable[6]);
+    setItem = reinterpret_cast<SetCategoryItem_t>(vtable[12]);
+    return MatchesCode(reinterpret_cast<const void*>(getCount), GET_COUNT_EXPECTED) &&
+        MatchesCode(reinterpret_cast<const void*>(getItem), GET_ITEM_EXPECTED) &&
+        MatchesCode(reinterpret_cast<const void*>(setItem), SET_ITEM_EXPECTED);
+}
+
+bool IsPlayerInventoryManager(void* candidate)
+{
+    constexpr std::array<BYTE, 13> GET_SUBCONTAINER_EXPECTED = {
+        0x8B, 0x49, 0xFC, 0x8B, 0x44, 0x24, 0x04,
+        0x8B, 0x04, 0x81, 0xC2, 0x04, 0x00
+    };
+    if (!IsReadableMemory(candidate, sizeof(void*))) {
+        return false;
+    }
+    void** vtable = *reinterpret_cast<void***>(candidate);
+    return IsReadableMemory(vtable, sizeof(void*) * 4) &&
+        MatchesCode(vtable[3], GET_SUBCONTAINER_EXPECTED);
+}
+
+void* RetainInventoryDefinition(void* definition)
+{
+    if (!definition || !IsReadableMemory(definition, sizeof(void*))) {
+        return definition;
+    }
+    void** vtable = *reinterpret_cast<void***>(definition);
+    if (!IsReadableMemory(vtable, sizeof(void*) * 11) || !vtable[10]) {
+        return nullptr;
+    }
+    return reinterpret_cast<RetainInterface_t>(vtable[10])(definition);
+}
+
+void ReleaseInventoryDefinition(void* definition)
+{
+    if (!definition || !IsReadableMemory(definition, sizeof(void*))) {
+        return;
+    }
+    void** vtable = *reinterpret_cast<void***>(definition);
+    if (IsReadableMemory(vtable, sizeof(void*) * 2) && vtable[1]) {
+        reinterpret_cast<ReleaseInterface_t>(vtable[1])(definition);
+    }
+}
+
+bool IsPriorityItemId(DWORD itemId, const DWORD* priorityItemIds, DWORD priorityItemIdCount)
+{
+    for (DWORD index = 0; index < priorityItemIdCount; ++index) {
+        if (priorityItemIds[index] == itemId) {
+            return true;
+        }
+    }
+    return false;
 }
 
 unsigned int __fastcall HookCategoryCapacity(void* self, void*)
@@ -379,6 +508,41 @@ void CapturePlayerCategoriesFromInventory(void* playerInventory)
     }
 }
 
+bool CapturePlayerCategoriesFromObservedPlayer()
+{
+    void* observedPlayer = GetObservedPlayerObject();
+    if (!observedPlayer) {
+        return false;
+    }
+
+    // PlayerApplyEffect is dispatched by a secondary player interface rather
+    // than the complete object. Locate the embedded category manager by its
+    // verified GetSubContainer method instead of assuming one executable-
+    // specific interface offset.
+    constexpr int SEARCH_BEFORE = 0x80;
+    constexpr int SEARCH_AFTER = 0x80;
+    BYTE* observed = static_cast<BYTE*>(observedPlayer);
+    for (int offset = -SEARCH_BEFORE; offset <= SEARCH_AFTER; offset += 4) {
+        void* candidate = observed + offset;
+        if (!IsPlayerInventoryManager(candidate)) {
+            continue;
+        }
+
+        CapturePlayerCategoriesFromInventory(candidate);
+        if (g_playerInventory == candidate) {
+            char message[192] = {};
+            std::snprintf(
+                message,
+                sizeof(message),
+                "Oynon player categories captured from bootstrap interface offset=%d",
+                offset);
+            WriteDebugLog("OynonTools", message);
+            return true;
+        }
+    }
+    return false;
+}
+
 void CapturePlayerContainerFromNative(void* self)
 {
     if (!IsReadableMemory(self, 0x10)) {
@@ -526,6 +690,160 @@ BOOL ConfigureWorldContainerCapacity(DWORD capacity)
         return FALSE;
     }
     g_worldContainerCapacity = capacity;
+    return TRUE;
+}
+
+BOOL StablePrioritizePlayerInventory(
+    const DWORD* priorityItemIds,
+    DWORD priorityItemIdCount,
+    DWORD* oldToNewIndices,
+    DWORD mappingCapacity,
+    DWORD* categoryItemCounts,
+    DWORD categoryCount,
+    BOOL* changed)
+{
+    constexpr DWORD REQUIRED_MAPPING_CAPACITY =
+        PLAYER_CATEGORY_COUNT * PLAYER_CATEGORY_MAPPING_STRIDE;
+    if (!priorityItemIds || priorityItemIdCount == 0 ||
+        !oldToNewIndices || mappingCapacity < REQUIRED_MAPPING_CAPACITY ||
+        !categoryItemCounts || categoryCount < PLAYER_CATEGORY_COUNT ||
+        !changed) {
+        return FALSE;
+    }
+
+    *changed = FALSE;
+    for (DWORD index = 0; index < mappingCapacity; ++index) {
+        oldToNewIndices[index] = 0xFFFFFFFFu;
+    }
+    for (DWORD category = 0; category < categoryCount; ++category) {
+        categoryItemCounts[category] = 0;
+    }
+
+    bool categoriesAvailable = true;
+    for (void* category : g_playerCategories) {
+        if (!category || !IsReadableMemory(category, sizeof(void*))) {
+            categoriesAvailable = false;
+            break;
+        }
+    }
+    if (!categoriesAvailable) {
+        if (!CapturePlayerCategoriesFromObservedPlayer()) {
+            WriteDebugLog(
+                "OynonTools",
+                "Oynon stable inventory priority unavailable: player categories not captured");
+            return FALSE;
+        }
+    }
+
+    std::array<GetCategoryItemCount_t, PLAYER_CATEGORY_COUNT> getCountMethods = {};
+    std::array<GetCategoryItem_t, PLAYER_CATEGORY_COUNT> getItemMethods = {};
+    std::array<SetCategoryItem_t, PLAYER_CATEGORY_COUNT> setItemMethods = {};
+    for (unsigned int category = 0; category < PLAYER_CATEGORY_COUNT; ++category) {
+        if (!ValidateCategoryReorderMethods(
+                g_playerCategories[category],
+                getCountMethods[category],
+                getItemMethods[category],
+                setItemMethods[category])) {
+            static bool signatureFailureLogged = false;
+            if (!signatureFailureLogged) {
+                WriteDebugLog(
+                    "OynonTools",
+                    "Oynon stable inventory priority disabled: category methods rejected");
+                signatureFailureLogged = true;
+            }
+            return FALSE;
+        }
+    }
+
+    std::array<std::vector<StableInventoryEntry>, PLAYER_CATEGORY_COUNT> sourceByCategory;
+    std::array<std::vector<StableInventoryEntry>, PLAYER_CATEGORY_COUNT> orderedByCategory;
+    std::array<bool, PLAYER_CATEGORY_COUNT> categoryChanged = {};
+    const auto releaseCapturedItems = [&sourceByCategory]() {
+        for (const auto& source : sourceByCategory) {
+            for (const StableInventoryEntry& entry : source) {
+                ReleaseInventoryDefinition(entry.item.definition);
+            }
+        }
+    };
+
+    for (unsigned int category = 0; category < PLAYER_CATEGORY_COUNT; ++category) {
+        void* categoryContainer = g_playerCategories[category];
+        const unsigned int itemCount = getCountMethods[category](categoryContainer);
+        if (itemCount > PLAYER_CATEGORY_MAPPING_STRIDE) {
+            releaseCapturedItems();
+            WriteDebugLog(
+                "OynonTools",
+                "Oynon stable inventory priority rejected: category exceeds mapping capacity");
+            return FALSE;
+        }
+        categoryItemCounts[category] = itemCount;
+
+        std::vector<StableInventoryEntry>& source = sourceByCategory[category];
+        source.reserve(itemCount);
+        for (unsigned int index = 0; index < itemCount; ++index) {
+            StableInventoryEntry entry = {};
+            getItemMethods[category](
+                categoryContainer,
+                &entry.item,
+                index,
+                &entry.amount);
+            entry.sourceIndex = index;
+            if (entry.item.definition) {
+                entry.item.definition = RetainInventoryDefinition(entry.item.definition);
+                if (!entry.item.definition) {
+                    releaseCapturedItems();
+                    WriteDebugLog(
+                        "OynonTools",
+                        "Oynon stable inventory priority rejected: item reference retain failed");
+                    return FALSE;
+                }
+            }
+            source.push_back(entry);
+        }
+
+        std::vector<StableInventoryEntry>& ordered = orderedByCategory[category];
+        ordered.reserve(itemCount);
+        for (const StableInventoryEntry& entry : source) {
+            if (IsPriorityItemId(entry.item.itemId, priorityItemIds, priorityItemIdCount)) {
+                ordered.push_back(entry);
+            }
+        }
+        for (const StableInventoryEntry& entry : source) {
+            if (!IsPriorityItemId(entry.item.itemId, priorityItemIds, priorityItemIdCount)) {
+                ordered.push_back(entry);
+            }
+        }
+
+        const DWORD mappingBase = category * PLAYER_CATEGORY_MAPPING_STRIDE;
+        for (unsigned int newIndex = 0; newIndex < itemCount; ++newIndex) {
+            const unsigned int oldIndex = ordered[newIndex].sourceIndex;
+            oldToNewIndices[mappingBase + oldIndex] = newIndex;
+            categoryChanged[category] =
+                categoryChanged[category] || oldIndex != newIndex;
+        }
+    }
+
+    bool anyChanged = false;
+    for (unsigned int category = 0; category < PLAYER_CATEGORY_COUNT; ++category) {
+        if (categoryChanged[category]) {
+            void* categoryContainer = g_playerCategories[category];
+            const auto& ordered = orderedByCategory[category];
+            for (unsigned int newIndex = 0;
+                 newIndex < static_cast<unsigned int>(ordered.size());
+                 ++newIndex) {
+                const StableInventoryEntry& entry = ordered[newIndex];
+                setItemMethods[category](
+                    categoryContainer,
+                    newIndex,
+                    &entry.item,
+                    entry.amount);
+            }
+            anyChanged = true;
+        }
+    }
+
+    releaseCapturedItems();
+    *changed = anyChanged ? TRUE : FALSE;
     return TRUE;
 }
 

@@ -11,6 +11,7 @@
 #include <array>
 #include <cstdint>
 #include <cstring>
+#include <vector>
 
 namespace
 {
@@ -33,6 +34,29 @@ InlineHook g_removeWndStationHook;
 CreateWnd_t g_originalCreateWnd = nullptr;
 RemoveWndStation_t g_originalRemoveWndStation = nullptr;
 DWORD g_lastCreateWndHookAttempt = 0;
+SRWLOCK g_prepareListenerLock = SRWLOCK_INIT;
+
+struct UIWindowPrepareListener
+{
+    OynonUIWindowPrepareCallback callback = nullptr;
+    void* userData = nullptr;
+};
+
+std::vector<UIWindowPrepareListener> g_prepareListeners;
+
+void DispatchUIWindowPrepare(const char* xml)
+{
+    std::vector<UIWindowPrepareListener> listeners;
+    ::AcquireSRWLockShared(&g_prepareListenerLock);
+    listeners = g_prepareListeners;
+    ::ReleaseSRWLockShared(&g_prepareListenerLock);
+
+    for (const UIWindowPrepareListener& listener : listeners) {
+        if (listener.callback) {
+            listener.callback(xml, listener.userData);
+        }
+    }
+}
 
 bool IsHookPatched(const InlineHook& hook, const void* detour)
 {
@@ -53,6 +77,7 @@ bool IsHookPatched(const InlineHook& hook, const void* detour)
 
 void* __fastcall HookCreateWnd(void* self, void*, void* station, const char* xml, void* eventReceiver)
 {
+    DispatchUIWindowPrepare(xml);
     ObserveUIInventoryWindow(station, xml);
 
     const char* resolvedXml = ResolveUIInventoryXml(xml);
@@ -68,6 +93,24 @@ void* __fastcall HookCreateWnd(void* self, void*, void* station, const char* xml
         : nullptr;
 }
 
+BOOL RegisterUIWindowPrepareCallbackImpl(OynonUIWindowPrepareCallback callback, void* userData)
+{
+    if (!callback) {
+        return FALSE;
+    }
+
+    ::AcquireSRWLockExclusive(&g_prepareListenerLock);
+    for (const UIWindowPrepareListener& listener : g_prepareListeners) {
+        if (listener.callback == callback && listener.userData == userData) {
+            ::ReleaseSRWLockExclusive(&g_prepareListenerLock);
+            return TRUE;
+        }
+    }
+    g_prepareListeners.push_back({ callback, userData });
+    ::ReleaseSRWLockExclusive(&g_prepareListenerLock);
+    return TRUE;
+}
+
 void __fastcall HookRemoveWndStation(void* self, void*, void* station)
 {
     ObserveUIInventoryStationRemoved(station);
@@ -75,6 +118,11 @@ void __fastcall HookRemoveWndStation(void* self, void*, void* station)
         g_originalRemoveWndStation(self, station);
     }
 }
+}
+
+BOOL RegisterUIWindowPrepareListener(OynonUIWindowPrepareCallback callback, void* userData)
+{
+    return RegisterUIWindowPrepareCallbackImpl(callback, userData);
 }
 
 bool TryInstallUIWindowHook()
@@ -150,7 +198,8 @@ void PollUIWindowHook()
     const DWORD uiHookFlags = OYNON_HOOK_UI_DAYCHANGE_TEXT |
         OYNON_HOOK_UI_PLAYERSTAT_REDIRECT |
         OYNON_HOOK_UI_INVENTORY_STATE |
-        OYNON_HOOK_UI_INVENTORY_REDIRECT;
+        OYNON_HOOK_UI_INVENTORY_REDIRECT |
+        OYNON_HOOK_UI_WINDOW_PREPARE;
     if (!(GetRequestedHookFlags() & uiHookFlags)) {
         return;
     }

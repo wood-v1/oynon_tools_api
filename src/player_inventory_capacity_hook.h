@@ -5,3 +5,11 @@
 bool InstallPlayerInventoryCapacityHook();
 BOOL ConfigurePlayerInventoryCategoryCapacity(DWORD capacity);
 BOOL ConfigureWorldContainerCapacity(DWORD capacity);
+BOOL StablePrioritizePlayerInventory(
+    const DWORD* priorityItemIds,
+    DWORD priorityItemIdCount,
+    DWORD* oldToNewIndices,
+    DWORD mappingCapacity,
+    DWORD* categoryItemCounts,
+    DWORD categoryCount,
+    BOOL* changed);

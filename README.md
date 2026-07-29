@@ -20,8 +20,9 @@ Supported flags:
 - `OYNON_HOOK_PLAYER_EFFECT_CALLBACK` - reports successful player effects after the game applies them.
 - `OYNON_HOOK_UI_INVENTORY_STATE` - reports opening and closing inventory-style UI overlays.
 - `OYNON_HOOK_PLAYER_USE_CALLBACK` - reports successful player interactions with the target script name.
-- `OYNON_HOOK_UI_INVENTORY_REDIRECT` - enables persistent redirection of the vanilla `inventory.xml` window to a custom UI XML.
+- `OYNON_HOOK_UI_INVENTORY_REDIRECT` - enables persistent redirection of vanilla player and loot windows to custom UI XML files.
 - `OYNON_HOOK_PLAYER_INVENTORY_CAPACITY` - removes the native 12-stack category rejection only for the five-subcontainer player inventory.
+- `OYNON_HOOK_UI_WINDOW_PREPARE` - reports the original XML name immediately before a UI window is created.
 
 Engine hooks wait for `Engine.dll` before installing. UI hooks are installed through `UI.dll`; if `UI.dll` is not loaded yet, call `OynonUIPoll()` periodically until the hook is installed.
 
@@ -69,6 +70,12 @@ Configures the player-only category-capacity override (12..64). The native categ
 
 Configures the native `AddItem` capacity override for non-player world containers (12..128). The caller remains responsible for enforcing its chosen visible or gameplay limit.
 
+`OynonStablePrioritizePlayerInventory(...)`
+
+Stably moves the requested numeric item IDs to the front of each player inventory category without using `RemoveItem`/`AddItem`. Relative order is preserved both for matching and non-matching entries. The call also returns per-category item counts and an old-index-to-new-index mapping with a fixed stride of 64 entries per category, allowing a mod to reconcile its own visual layout.
+
+The operation validates the category `GetItem`/`SetItem` methods before changing anything and returns `FALSE` without modifying the inventory on an unsupported executable signature. The API is generic: the caller owns all game- or mod-specific item lists.
+
 `OynonRegisterInventoryStateCallback(OynonInventoryStateCallback callback, void* userData)`
 
 Registers a listener for inventory-style overlay state changes. The callback receives `TRUE` when an inventory, container, corpse, or apparatus overlay opens and `FALSE` when the corresponding UI station closes.
@@ -105,7 +112,7 @@ This redirect is persistent after it is configured. Request `OYNON_HOOK_UI_PLAYE
 
 `OynonUIInventorySetRedirect(const char* xml)`
 
-Redirects vanilla `inventory.xml` window creation to a custom XML file. Apparatus and doctor-apparatus windows are not redirected. Pass `nullptr` or an empty string to clear the redirect.
+Redirects vanilla `inventory.xml` window creation to a custom XML file. Pass `nullptr` or an empty string to clear the redirect.
 
 This redirect is persistent after it is configured. Request `OYNON_HOOK_UI_INVENTORY_REDIRECT` during initialization, then call `OynonUIInventorySetRedirect("my_inventory.xml")` once your custom XML is available.
 Inventory-state classification treats the configured XML and its resolution variants, such as `my_inventory_1024x768.xml`, as inventory overlays.
@@ -113,6 +120,10 @@ Inventory-state classification treats the configured XML and its resolution vari
 `OynonUILootSetRedirects(const char* containerXml, const char* corpseXml)`
 
 Redirects vanilla `container.xml` and `corpse.xml` window creation independently. Either redirect can be cleared with `nullptr` or an empty string. These redirects use the same persistent inventory UI hook and participate in inventory-overlay state classification.
+
+`OynonRegisterUIWindowPrepareCallback(OynonUIWindowPrepareCallback callback, void* userData)`
+
+Registers a generic callback that receives the original XML name immediately before `CreateWnd`. The callback does not redirect or replace the window. Request `OYNON_HOOK_UI_WINDOW_PREPARE` during initialization.
 
 `OynonUIInventoryPoll()`
 

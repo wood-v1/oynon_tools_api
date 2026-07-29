@@ -17,6 +17,7 @@ constexpr const char* VANILLA_CONTAINER_XML = "container.xml";
 constexpr const char* VANILLA_CORPSE_XML = "corpse.xml";
 constexpr const char* VANILLA_APPARATUS_XML = "apparatus.xml";
 constexpr const char* VANILLA_DOCTOR_APPARATUS_XML = "dapparatus.xml";
+constexpr const char* VANILLA_MICROSCOPE_XML = "microscope.xml";
 
 struct InventoryStateListener
 {
@@ -60,7 +61,8 @@ bool IsInventoryOverlayXml(const char* xml)
         std::strcmp(xml, VANILLA_CONTAINER_XML) == 0 ||
         std::strcmp(xml, VANILLA_CORPSE_XML) == 0 ||
         std::strcmp(xml, VANILLA_APPARATUS_XML) == 0 ||
-        std::strcmp(xml, VANILLA_DOCTOR_APPARATUS_XML) == 0;
+        std::strcmp(xml, VANILLA_DOCTOR_APPARATUS_XML) == 0 ||
+        std::strcmp(xml, VANILLA_MICROSCOPE_XML) == 0;
 }
 
 DWORD ClassifyInventoryOverlayXml(const char* xml)

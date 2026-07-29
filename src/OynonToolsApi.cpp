@@ -75,7 +75,8 @@ BOOL OynonInitializeHooksWhenReady(DWORD hookFlags)
     if (hookFlags & (OYNON_HOOK_UI_DAYCHANGE_TEXT |
         OYNON_HOOK_UI_PLAYERSTAT_REDIRECT |
         OYNON_HOOK_UI_INVENTORY_STATE |
-        OYNON_HOOK_UI_INVENTORY_REDIRECT)) {
+        OYNON_HOOK_UI_INVENTORY_REDIRECT |
+        OYNON_HOOK_UI_WINDOW_PREPARE)) {
         if (::GetModuleHandleA("UI.dll") == nullptr) {
             WriteDebugLog("OynonTools", "Oynon UI hook deferred until UI.dll loads");
         }
@@ -108,6 +109,11 @@ BOOL OynonRegisterInventoryStateCallback(OynonInventoryStateCallback callback, v
     return RegisterInventoryStateCallback(callback, userData);
 }
 
+BOOL OynonRegisterUIWindowPrepareCallback(OynonUIWindowPrepareCallback callback, void* userData)
+{
+    return RegisterUIWindowPrepareListener(callback, userData);
+}
+
 BOOL OynonRegisterPlayerUseCallback(OynonPlayerUseCallback callback, void* userData)
 {
     return RegisterPlayerUseCallback(callback, userData);
@@ -131,6 +137,25 @@ BOOL OynonSetPlayerInventoryCategoryCapacity(DWORD capacity)
 BOOL OynonSetWorldContainerCapacity(DWORD capacity)
 {
     return ConfigureWorldContainerCapacity(capacity);
+}
+
+BOOL OynonStablePrioritizePlayerInventory(
+    const DWORD* priorityItemIds,
+    DWORD priorityItemIdCount,
+    DWORD* oldToNewIndices,
+    DWORD mappingCapacity,
+    DWORD* categoryItemCounts,
+    DWORD categoryCount,
+    BOOL* changed)
+{
+    return StablePrioritizePlayerInventory(
+        priorityItemIds,
+        priorityItemIdCount,
+        oldToNewIndices,
+        mappingCapacity,
+        categoryItemCounts,
+        categoryCount,
+        changed);
 }
 
 BOOL OynonExecCommand(const char* command)
