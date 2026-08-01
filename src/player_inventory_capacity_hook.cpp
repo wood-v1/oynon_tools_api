@@ -34,6 +34,7 @@ using ScriptGetPlayerContainer_t = bool(__thiscall*)(void* self, void* arguments
 using GetSubContainerCount_t = unsigned int(__thiscall*)(void* self);
 using GetSubContainer_t = void*(__thiscall*)(void* self, unsigned int category);
 using LookupObject_t = void*(__thiscall*)(void* self, DWORD hash);
+using SetPlayerHandsItem_t = void(__thiscall*)(void* self, int itemId);
 using GetCategoryCapacity_t = unsigned int(__thiscall*)(void* self);
 using DirectPlayerAddItem_t = bool(__thiscall*)(
     void* self,
@@ -85,6 +86,7 @@ DWORD g_playerCategoryCapacity = MAX_CATEGORY_CAPACITY;
 DWORD g_worldContainerCapacity = VANILLA_CATEGORY_CAPACITY;
 void* g_playerContainer = nullptr;
 void* g_playerInventory = nullptr;
+void* g_playerNativeContext = nullptr;
 std::array<void*, PLAYER_CATEGORY_COUNT> g_playerCategories = {};
 std::array<CapacityVtablePatch, PLAYER_CATEGORY_COUNT> g_capacityVtablePatches = {};
 unsigned int g_capacityVtablePatchCount = 0;
@@ -409,10 +411,9 @@ void CapturePlayerCategories(void* playerContainer)
     if (!playerContainer) {
         return;
     }
-    if (playerContainer == g_playerContainer) {
-        PatchDirectPlayerAddItemVtable(playerContainer);
-        return;
-    }
+    // Game loads can reuse the same embedded player-container address while
+    // replacing the five category objects. Always refresh the category array;
+    // retaining the old pointers disables stable sorting after loading a save.
     // GetPlayerContainer returns the interface embedded at player+0x60.
     // The category manager used by Game.exe::AddItem is at player+0x3C and
     // its category pointer array is stored at player+0x38.  Therefore the
@@ -438,7 +439,20 @@ void CapturePlayerCategories(void* playerContainer)
         }
     }
 
+    bool categoriesChanged = playerContainer != g_playerContainer;
+    for (unsigned int category = 0; category < PLAYER_CATEGORY_COUNT; ++category) {
+        if (categories[category] != g_playerCategories[category]) {
+            categoriesChanged = true;
+            break;
+        }
+    }
+    if (!categoriesChanged) {
+        PatchDirectPlayerAddItemVtable(playerContainer);
+        return;
+    }
+
     g_playerContainer = playerContainer;
+    g_playerInventory = static_cast<BYTE*>(playerContainer) - 0x24;
     PatchDirectPlayerAddItemVtable(playerContainer);
     g_playerCategories = categories;
     bool patched = true;
@@ -552,6 +566,7 @@ void CapturePlayerContainerFromNative(void* self)
     if (!IsReadableMemory(context, sizeof(void*))) {
         return;
     }
+    g_playerNativeContext = context;
     void** vtable = *reinterpret_cast<void***>(context);
     if (!IsReadableMemory(vtable, sizeof(void*) * 3) || !vtable[2]) {
         return;
@@ -693,6 +708,39 @@ BOOL ConfigureWorldContainerCapacity(DWORD capacity)
     return TRUE;
 }
 
+void ResetCapturedPlayerInventoryState()
+{
+    g_playerContainer = nullptr;
+    g_playerInventory = nullptr;
+    g_playerNativeContext = nullptr;
+    g_playerCategories.fill(nullptr);
+    g_playerCapacityOverrideDepth = 0;
+    g_playerCapacityOverrideCalls = 0;
+    WriteDebugLog("OynonTools", "Oynon player inventory session state reset");
+}
+
+BOOL SetObservedPlayerHandsItem(int itemId)
+{
+    void* context = g_playerNativeContext;
+    if (!IsReadableMemory(context, sizeof(void*))) {
+        WriteDebugLog("OynonTools", "Oynon SetPlayerHandsItem rejected: player context unavailable");
+        return FALSE;
+    }
+
+    void** vtable = *reinterpret_cast<void***>(context);
+    if (!IsReadableMemory(vtable, sizeof(void*) * 5) || !vtable[4] ||
+        !IsReadableMemory(vtable[4], 8)) {
+        WriteDebugLog("OynonTools", "Oynon SetPlayerHandsItem rejected: context method unavailable");
+        return FALSE;
+    }
+
+    // SetPlayerHandsItem's verified script-native wrapper dispatches the item ID
+    // to slot 4 of the same player context captured by GetPlayerContainer.
+    const auto setHandsItem = reinterpret_cast<SetPlayerHandsItem_t>(vtable[4]);
+    setHandsItem(context, itemId);
+    return TRUE;
+}
+
 BOOL StablePrioritizePlayerInventory(
     const DWORD* priorityItemIds,
     DWORD priorityItemIdCount,
@@ -718,6 +766,11 @@ BOOL StablePrioritizePlayerInventory(
     for (DWORD category = 0; category < categoryCount; ++category) {
         categoryItemCounts[category] = 0;
     }
+
+    // A world/save transition can leave the previous category objects mapped
+    // and readable even though they no longer belong to the active player.
+    // Refresh from the observed player before validating/reordering.
+    CapturePlayerCategoriesFromObservedPlayer();
 
     bool categoriesAvailable = true;
     for (void* category : g_playerCategories) {

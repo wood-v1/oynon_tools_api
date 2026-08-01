@@ -49,6 +49,7 @@ using OynonInventoryStateCallback = void(__stdcall*)(BOOL opened, void* userData
 using OynonUIWindowPrepareCallback = void(__stdcall*)(const char* xml, void* userData);
 using OynonPlayerUseCallback = void(__stdcall*)(const char* scriptName, void* userData);
 using OynonPlayerShootingAttemptCallback = void(__stdcall*)(BOOL repeated, void* userData);
+using OynonKeyboardCallback = void(__stdcall*)(DWORD virtualKey, BOOL pressed, void* userData);
 
 OYNONTOOLS_API BOOL OynonInitializeHooksWhenReady(DWORD hookFlags);
 
@@ -59,9 +60,11 @@ OYNONTOOLS_API BOOL OynonRegisterInventoryStateCallback(OynonInventoryStateCallb
 OYNONTOOLS_API BOOL OynonRegisterUIWindowPrepareCallback(OynonUIWindowPrepareCallback callback, void* userData);
 OYNONTOOLS_API BOOL OynonRegisterPlayerUseCallback(OynonPlayerUseCallback callback, void* userData);
 OYNONTOOLS_API BOOL OynonRegisterPlayerShootingAttemptCallback(OynonPlayerShootingAttemptCallback callback, void* userData);
+OYNONTOOLS_API BOOL OynonRegisterKeyboardCallback(OynonKeyboardCallback callback, void* userData);
 OYNONTOOLS_API BOOL OynonSetPlayerBootstrapEffect(const char* effectName);
 OYNONTOOLS_API BOOL OynonSetPlayerInventoryCategoryCapacity(DWORD capacity);
 OYNONTOOLS_API BOOL OynonSetWorldContainerCapacity(DWORD capacity);
+OYNONTOOLS_API BOOL OynonSetPlayerHandsItem(int itemId);
 OYNONTOOLS_API BOOL OynonStablePrioritizePlayerInventory(
     const DWORD* priorityItemIds,
     DWORD priorityItemIdCount,
@@ -84,9 +87,13 @@ OYNONTOOLS_API BOOL OynonUIDaychangeIsVanillaActive(DWORD now);
 OYNONTOOLS_API void OynonUIPlayerstatSetRedirect(const char* xml);
 OYNONTOOLS_API void OynonUIInventorySetRedirect(const char* xml);
 OYNONTOOLS_API void OynonUILootSetRedirects(const char* containerXml, const char* corpseXml);
+OYNONTOOLS_API BOOL OynonUISetWindowRedirect(const char* hostXml, const char* replacementXml);
+OYNONTOOLS_API BOOL OynonUISetOneShotWindowRedirect(const char* hostXml, const char* replacementXml);
+OYNONTOOLS_API BOOL OynonUISetCompanionWindow(const char* hostXml, const char* companionXml);
 OYNONTOOLS_API void OynonUIInventoryPoll();
 OYNONTOOLS_API DWORD OynonUIInventoryGetOverlayKind();
 OYNONTOOLS_API void OynonUIPoll();
+OYNONTOOLS_API void OynonKeyboardPoll();
 
 OYNONTOOLS_API BOOL OynonDebugConfigureChannel(const char* channelId, BOOL enabled, const char* logPath, const char* consoleCapturePath);
 OYNONTOOLS_API BOOL OynonDebugConfigureLauncherChannel(const char* channelId, BOOL captureConsole);

@@ -10,6 +10,7 @@ add_library(OynonTools SHARED
     src/console_read_hook.cpp
     src/debug.cpp
     src/inline_hook_utils.cpp
+    src/keyboard_input.cpp
     src/movement_hooks.cpp
     src/OynonToolsApi.cpp
     src/oynontools_state.cpp

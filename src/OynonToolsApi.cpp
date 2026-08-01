@@ -3,6 +3,7 @@
 #include "console_execute_hook.h"
 #include "console_read_hook.h"
 #include "debug.h"
+#include "keyboard_input.h"
 #include "movement_hooks.h"
 #include "oynontools_state.h"
 #include "player_effect_hook.h"
@@ -124,6 +125,11 @@ BOOL OynonRegisterPlayerShootingAttemptCallback(OynonPlayerShootingAttemptCallba
     return RegisterPlayerShootingAttemptCallback(callback, userData);
 }
 
+BOOL OynonRegisterKeyboardCallback(OynonKeyboardCallback callback, void* userData)
+{
+    return RegisterKeyboardCallback(callback, userData);
+}
+
 BOOL OynonSetPlayerBootstrapEffect(const char* effectName)
 {
     return SetPlayerBootstrapEffect(effectName);
@@ -137,6 +143,11 @@ BOOL OynonSetPlayerInventoryCategoryCapacity(DWORD capacity)
 BOOL OynonSetWorldContainerCapacity(DWORD capacity)
 {
     return ConfigureWorldContainerCapacity(capacity);
+}
+
+BOOL OynonSetPlayerHandsItem(int itemId)
+{
+    return SetObservedPlayerHandsItem(itemId);
 }
 
 BOOL OynonStablePrioritizePlayerInventory(
@@ -213,6 +224,21 @@ void OynonUILootSetRedirects(const char* containerXml, const char* corpseXml)
     SetUILootRedirects(containerXml, corpseXml);
 }
 
+BOOL OynonUISetWindowRedirect(const char* hostXml, const char* replacementXml)
+{
+    return SetUIWindowRedirect(hostXml, replacementXml);
+}
+
+BOOL OynonUISetOneShotWindowRedirect(const char* hostXml, const char* replacementXml)
+{
+    return SetUIOneShotWindowRedirect(hostXml, replacementXml);
+}
+
+BOOL OynonUISetCompanionWindow(const char* hostXml, const char* companionXml)
+{
+    return SetUICompanionWindow(hostXml, companionXml);
+}
+
 void OynonUIInventoryPoll()
 {
     PollUIInventoryState();
@@ -226,6 +252,11 @@ DWORD OynonUIInventoryGetOverlayKind()
 void OynonUIPoll()
 {
     PollUIWindowHook();
+}
+
+void OynonKeyboardPoll()
+{
+    PollKeyboardInput();
 }
 
 BOOL OynonDebugConfigureChannel(const char* channelId, BOOL enabled, const char* logPath, const char* consoleCapturePath)

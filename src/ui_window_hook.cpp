@@ -11,6 +11,7 @@
 #include <array>
 #include <cstdint>
 #include <cstring>
+#include <string>
 #include <vector>
 
 namespace
@@ -43,6 +44,80 @@ struct UIWindowPrepareListener
 };
 
 std::vector<UIWindowPrepareListener> g_prepareListeners;
+
+struct UICompanionWindow
+{
+    std::string hostXml;
+    std::string companionXml;
+};
+
+std::vector<UICompanionWindow> g_companionWindows;
+
+struct UIWindowRedirect
+{
+    std::string hostXml;
+    std::string replacementXml;
+};
+
+std::vector<UIWindowRedirect> g_windowRedirects;
+std::vector<UIWindowRedirect> g_oneShotWindowRedirects;
+
+std::string ConsumeUIOneShotWindowRedirect(const char* hostXml)
+{
+    if (!hostXml) {
+        return {};
+    }
+
+    std::string result;
+    ::AcquireSRWLockExclusive(&g_prepareListenerLock);
+    for (auto entry = g_oneShotWindowRedirects.begin();
+         entry != g_oneShotWindowRedirects.end();
+         ++entry) {
+        if (entry->hostXml == hostXml) {
+            result = entry->replacementXml;
+            g_oneShotWindowRedirects.erase(entry);
+            break;
+        }
+    }
+    ::ReleaseSRWLockExclusive(&g_prepareListenerLock);
+    return result;
+}
+
+std::string ResolveUIWindowRedirect(const char* hostXml)
+{
+    if (!hostXml) {
+        return {};
+    }
+
+    std::string result;
+    ::AcquireSRWLockShared(&g_prepareListenerLock);
+    for (const UIWindowRedirect& entry : g_windowRedirects) {
+        if (entry.hostXml == hostXml) {
+            result = entry.replacementXml;
+            break;
+        }
+    }
+    ::ReleaseSRWLockShared(&g_prepareListenerLock);
+    return result;
+}
+
+std::string ResolveUICompanionWindow(const char* hostXml)
+{
+    if (!hostXml) {
+        return {};
+    }
+
+    std::string result;
+    ::AcquireSRWLockShared(&g_prepareListenerLock);
+    for (const UICompanionWindow& entry : g_companionWindows) {
+        if (entry.hostXml == hostXml) {
+            result = entry.companionXml;
+            break;
+        }
+    }
+    ::ReleaseSRWLockShared(&g_prepareListenerLock);
+    return result;
+}
 
 void DispatchUIWindowPrepare(const char* xml)
 {
@@ -80,7 +155,16 @@ void* __fastcall HookCreateWnd(void* self, void*, void* station, const char* xml
     DispatchUIWindowPrepare(xml);
     ObserveUIInventoryWindow(station, xml);
 
-    const char* resolvedXml = ResolveUIInventoryXml(xml);
+    const std::string oneShotRedirect = ConsumeUIOneShotWindowRedirect(xml);
+    const std::string genericRedirect = oneShotRedirect.empty()
+        ? ResolveUIWindowRedirect(xml)
+        : oneShotRedirect;
+    const char* resolvedXml = genericRedirect.empty()
+        ? xml
+        : genericRedirect.c_str();
+    if (resolvedXml == xml) {
+        resolvedXml = ResolveUIInventoryXml(xml);
+    }
     if (resolvedXml == xml) {
         resolvedXml = ResolveUIPlayerstatXml(xml);
     }
@@ -88,9 +172,18 @@ void* __fastcall HookCreateWnd(void* self, void*, void* station, const char* xml
         resolvedXml = ResolveUIDaychangeXml(xml, ::GetTickCount());
     }
 
-    return g_originalCreateWnd
+    void* window = g_originalCreateWnd
         ? g_originalCreateWnd(self, station, resolvedXml, eventReceiver)
         : nullptr;
+
+    const std::string companionXml = ResolveUICompanionWindow(xml);
+    if (g_originalCreateWnd &&
+        !companionXml.empty() &&
+        companionXml != xml) {
+        g_originalCreateWnd(self, station, companionXml.c_str(), eventReceiver);
+        WriteDebugLog(OYNONTOOLS_DEBUG_CHANNEL, "Oynon UI companion window created");
+    }
+    return window;
 }
 
 BOOL RegisterUIWindowPrepareCallbackImpl(OynonUIWindowPrepareCallback callback, void* userData)
@@ -123,6 +216,71 @@ void __fastcall HookRemoveWndStation(void* self, void*, void* station)
 BOOL RegisterUIWindowPrepareListener(OynonUIWindowPrepareCallback callback, void* userData)
 {
     return RegisterUIWindowPrepareCallbackImpl(callback, userData);
+}
+
+BOOL SetUIWindowRedirect(const char* hostXml, const char* replacementXml)
+{
+    if (!hostXml || hostXml[0] == '\0') {
+        return FALSE;
+    }
+
+    ::AcquireSRWLockExclusive(&g_prepareListenerLock);
+    for (UIWindowRedirect& entry : g_windowRedirects) {
+        if (entry.hostXml == hostXml) {
+            entry.replacementXml = replacementXml ? replacementXml : "";
+            ::ReleaseSRWLockExclusive(&g_prepareListenerLock);
+            return TRUE;
+        }
+    }
+    g_windowRedirects.push_back({
+        hostXml,
+        replacementXml ? replacementXml : ""
+    });
+    ::ReleaseSRWLockExclusive(&g_prepareListenerLock);
+    return TRUE;
+}
+
+BOOL SetUIOneShotWindowRedirect(const char* hostXml, const char* replacementXml)
+{
+    if (!hostXml || hostXml[0] == '\0') {
+        return FALSE;
+    }
+
+    ::AcquireSRWLockExclusive(&g_prepareListenerLock);
+    for (UIWindowRedirect& entry : g_oneShotWindowRedirects) {
+        if (entry.hostXml == hostXml) {
+            entry.replacementXml = replacementXml ? replacementXml : "";
+            ::ReleaseSRWLockExclusive(&g_prepareListenerLock);
+            return TRUE;
+        }
+    }
+    if (replacementXml && replacementXml[0] != '\0') {
+        g_oneShotWindowRedirects.push_back({ hostXml, replacementXml });
+    }
+    ::ReleaseSRWLockExclusive(&g_prepareListenerLock);
+    return TRUE;
+}
+
+BOOL SetUICompanionWindow(const char* hostXml, const char* companionXml)
+{
+    if (!hostXml || hostXml[0] == '\0') {
+        return FALSE;
+    }
+
+    ::AcquireSRWLockExclusive(&g_prepareListenerLock);
+    for (UICompanionWindow& entry : g_companionWindows) {
+        if (entry.hostXml == hostXml) {
+            entry.companionXml = companionXml ? companionXml : "";
+            ::ReleaseSRWLockExclusive(&g_prepareListenerLock);
+            return TRUE;
+        }
+    }
+    g_companionWindows.push_back({
+        hostXml,
+        companionXml ? companionXml : ""
+    });
+    ::ReleaseSRWLockExclusive(&g_prepareListenerLock);
+    return TRUE;
 }
 
 bool TryInstallUIWindowHook()

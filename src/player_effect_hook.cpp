@@ -2,6 +2,7 @@
 
 #include "debug.h"
 #include "inline_hook_utils.h"
+#include "player_inventory_capacity_hook.h"
 
 #include <algorithm>
 #include <array>
@@ -99,13 +100,22 @@ bool __fastcall HookPlayerApplyEffect(void* self, void*, const char* effectName,
     if (applied) {
         std::string bootstrapEffect;
         bool injectBootstrap = false;
+        bool playerChanged = false;
         {
             std::lock_guard<std::mutex> lock(g_listenerMutex);
             if (!g_playerBootstrapEffect.empty() && self != g_bootstrappedPlayer) {
                 g_bootstrappedPlayer = self;
                 bootstrapEffect = g_playerBootstrapEffect;
                 injectBootstrap = true;
+                playerChanged = true;
             }
+        }
+        if (playerChanged) {
+            // Category objects and the script-native context belong to the
+            // previous world.  Their memory may remain readable briefly after
+            // a save-to-new-game transition, so readability checks alone are
+            // insufficient to prevent a stale virtual call.
+            ResetCapturedPlayerInventoryState();
         }
         if (injectBootstrap && effectName && bootstrapEffect != effectName && g_originalPlayerApplyEffect) {
             const bool bootstrapApplied = g_originalPlayerApplyEffect(self, bootstrapEffect.c_str(), nullptr);

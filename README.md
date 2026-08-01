@@ -1,6 +1,6 @@
 # OynonTools
 
-Shared hook library for Pathologic Classic HD runtime mods. The library exposes reusable runtime hooks and helper APIs for console commands, movement tuning, UI redirection, and debug logging.
+Shared hook library for Pathologic Classic HD runtime mods. The library exposes reusable runtime hooks and helper APIs for console commands, movement tuning, UI redirection and lifecycle callbacks, keyboard input, player inventory access, and debug logging. The API remains game-agnostic: item lists, window policies, and mod-specific behavior belong to the consuming mod.
 
 ## API
 
@@ -70,6 +70,10 @@ Configures the player-only category-capacity override (12..64). The native categ
 
 Configures the native `AddItem` capacity override for non-player world containers (12..128). The caller remains responsible for enforcing its chosen visible or gameplay limit.
 
+`OynonSetPlayerHandsItem(int itemId)`
+
+Changes the player's active hands item through the verified native player method. Pass the numeric item ID expected by the game. The call returns `FALSE` without changing state when the player or the supported method signature is unavailable.
+
 `OynonStablePrioritizePlayerInventory(...)`
 
 Stably moves the requested numeric item IDs to the front of each player inventory category without using `RemoveItem`/`AddItem`. Relative order is preserved both for matching and non-matching entries. The call also returns per-category item counts and an old-index-to-new-index mapping with a fixed stride of 64 entries per category, allowing a mod to reconcile its own visual layout.
@@ -125,6 +129,18 @@ Redirects vanilla `container.xml` and `corpse.xml` window creation independently
 
 Registers a generic callback that receives the original XML name immediately before `CreateWnd`. The callback does not redirect or replace the window. Request `OYNON_HOOK_UI_WINDOW_PREPARE` during initialization.
 
+`OynonUISetWindowRedirect(const char* hostXml, const char* replacementXml)`
+
+Configures or clears a persistent generic XML redirect. This is the neutral form of the inventory/playerstat helpers and is suitable for other runtime mods.
+
+`OynonUISetOneShotWindowRedirect(const char* hostXml, const char* replacementXml)`
+
+Arms a redirect for the next matching window creation only. The rule is consumed after a successful match.
+
+`OynonUISetCompanionWindow(const char* hostXml, const char* companionXml)`
+
+Configures a companion XML window to be opened beside a matching host window. Pass an empty replacement to clear the mapping.
+
 `OynonUIInventoryPoll()`
 
 Polls inventory overlay classification and also retries installing the shared UI hooks. Call this periodically after requesting `OYNON_HOOK_UI_INVENTORY_STATE`.
@@ -140,6 +156,18 @@ Returns the currently active inventory-style overlay:
 - `OYNON_INVENTORY_OVERLAY_OTHER` - another tracked inventory-style window, such as an apparatus, is open.
 
 Request `OYNON_HOOK_UI_INVENTORY_STATE` and call `OynonUIInventoryPoll()` periodically before reading this value. Redirected inventory, container, and corpse XML files retain their corresponding overlay kinds.
+
+`OynonRegisterKeyboardCallback(OynonKeyboardCallback callback, void* userData)`
+
+Registers a listener for keyboard transitions observed by the shared input
+poller. The callback receives the Windows virtual-key code and whether the key
+was pressed or released.
+
+`OynonKeyboardPoll()`
+
+Polls keyboard state, emits each transition once, and follows the game's current
+key bindings where the consuming mod resolves a configured action. Call it from
+a safe periodic callback; it performs no background game-state mutation.
 
 `OynonDebugConfigureChannel(const char* channelId, BOOL enabled, const char* logPath, const char* consoleCapturePath)`
 
