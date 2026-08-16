@@ -65,6 +65,10 @@ Registers a listener for successful effects applied to the player. The callback 
 
 Configures one compiled effect to be applied once to each newly created player actor. The effect is queued until OynonTools validates a complete five-category player inventory and the caller confirms a safe gameplay lifecycle point with `OynonConfirmPlayerBootstrapReady()`. Configure it before initializing both `OYNON_HOOK_PLAYER_EFFECT_CALLBACK` and `OYNON_HOOK_PLAYER_INVENTORY_CAPACITY`.
 
+`OynonRearmPlayerBootstrapEffect()`
+
+Invalidates the previously observed player and captured inventory after a save/new-world transition. This prevents later APIs from dereferencing an actor that was destroyed or replaced by loading. The configured bootstrap effect becomes eligible again after OynonTools observes and validates the next player; this function deliberately does not reuse an address from the previous world.
+
 `OynonConfirmPlayerBootstrapReady()`
 
 Confirms that the currently observed player has reached a caller-defined gameplay-ready lifecycle point. Confirmation is cleared whenever OynonTools observes a different player object. This second gate prevents structurally complete transitional actors in hub and finale worlds from receiving long-lived bootstrap effects.
@@ -80,6 +84,10 @@ Configures the native `AddItem` capacity override for non-player world container
 `OynonSetPlayerHandsItem(int itemId)`
 
 Changes the player's active hands item through the verified native player method. Pass the numeric item ID expected by the game. The call returns `FALSE` without changing state when the player or the supported method signature is unavailable.
+
+`OynonApplyObservedPlayerEffect(const char* effectName)`
+
+Queues an effect for the currently observed and structurally validated player. It returns `FALSE` while no current player has been observed, including the interval immediately after `OynonRearmPlayerBootstrapEffect()`. Callers that must act during that interval should use an engine-owned lookup path such as `OynonExecCommand("effect player <effect.bin>")` instead of retaining an old player pointer.
 
 `OynonStablePrioritizePlayerInventory(...)`
 

@@ -150,6 +150,11 @@ BOOL OynonSetPlayerBootstrapEffect(const char* effectName)
     return SetPlayerBootstrapEffect(effectName);
 }
 
+BOOL OynonRearmPlayerBootstrapEffect()
+{
+    return RearmPlayerBootstrapEffect();
+}
+
 BOOL OynonConfirmPlayerBootstrapReady()
 {
     return ConfirmPlayerBootstrapReady();

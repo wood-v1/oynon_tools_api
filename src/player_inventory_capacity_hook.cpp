@@ -162,6 +162,22 @@ bool IsReadableMemory(const void* address, std::size_t size)
     return end >= begin && end <= regionEnd;
 }
 
+bool IsExecutableMemory(const void* address)
+{
+    if (!address) {
+        return false;
+    }
+    MEMORY_BASIC_INFORMATION memory = {};
+    if (::VirtualQuery(address, &memory, sizeof(memory)) != sizeof(memory) ||
+        memory.State != MEM_COMMIT || (memory.Protect & PAGE_GUARD)) {
+        return false;
+    }
+    const DWORD protection = memory.Protect & 0xFF;
+    return protection == PAGE_EXECUTE || protection == PAGE_EXECUTE_READ ||
+        protection == PAGE_EXECUTE_READWRITE ||
+        protection == PAGE_EXECUTE_WRITECOPY;
+}
+
 template <std::size_t Size>
 bool MatchesCode(const void* address, const std::array<BYTE, Size>& expected)
 {
@@ -506,6 +522,7 @@ void CapturePlayerCategories(void* playerContainer)
 
     g_playerContainer = playerContainer;
     g_playerInventory = static_cast<BYTE*>(playerContainer) - 0x24;
+    RecoverObservedPlayerFromInventoryManager(g_playerInventory);
     PatchDirectPlayerAddItemVtable(playerContainer);
     g_playerCategories = categories;
     bool patched = true;
@@ -527,21 +544,33 @@ void CapturePlayerCategories(void* playerContainer)
 
 void CapturePlayerCategoriesFromInventory(void* playerInventory)
 {
-    if (!playerInventory || !IsReadableMemory(playerInventory, sizeof(void*))) {
+    if (!playerInventory || !IsReadableMemory(playerInventory, sizeof(void*)) ||
+        !IsPlayerInventoryManager(playerInventory)) {
         return;
     }
-    void** vtable = *reinterpret_cast<void***>(playerInventory);
-    if (!IsReadableMemory(vtable, sizeof(void*) * 4) || !vtable[3]) {
+
+    // GetSubContainer itself starts with `mov ecx, [ecx-4]`: the manager keeps
+    // its category-array pointer immediately before the exposed interface.
+    // Reading that field directly avoids a virtual call through an object that
+    // may be in the middle of save-load teardown.
+    BYTE* categoryArrayField = static_cast<BYTE*>(playerInventory) - 0x04;
+    if (!IsReadableMemory(categoryArrayField, sizeof(void*))) {
         if (!g_suppressCaptureDiagnostics) {
-            WriteDebugLog("OynonTools", "Oynon player inventory category getter is unreadable");
+            WriteDebugLog("OynonTools", "Oynon player inventory category array is unreadable");
+        }
+        return;
+    }
+    void** categoryArray = *reinterpret_cast<void***>(categoryArrayField);
+    if (!IsReadableMemory(categoryArray, sizeof(void*) * PLAYER_CATEGORY_COUNT)) {
+        if (!g_suppressCaptureDiagnostics) {
+            WriteDebugLog("OynonTools", "Oynon direct player category array is unavailable");
         }
         return;
     }
 
-    const auto getSubContainer = reinterpret_cast<GetSubContainer_t>(vtable[3]);
     std::array<void*, PLAYER_CATEGORY_COUNT> categories = {};
     for (unsigned int category = 0; category < PLAYER_CATEGORY_COUNT; ++category) {
-        categories[category] = getSubContainer(playerInventory, category);
+        categories[category] = categoryArray[category];
         if (!IsReadableMemory(categories[category], sizeof(void*))) {
             if (!g_suppressCaptureDiagnostics) {
                 WriteDebugLog("OynonTools", "Oynon direct player category lookup failed");
@@ -564,6 +593,7 @@ void CapturePlayerCategoriesFromInventory(void* playerInventory)
         }
     }
     g_playerInventory = playerInventory;
+    RecoverObservedPlayerFromInventoryManager(g_playerInventory);
     g_playerCategories = categories;
     bool patched = true;
     for (void* category : g_playerCategories) {
@@ -585,9 +615,8 @@ void CapturePlayerCategoriesFromInventory(void* playerInventory)
     }
 }
 
-bool CapturePlayerCategoriesFromObservedPlayer()
+bool CapturePlayerCategoriesNearInterface(void* observedPlayer)
 {
-    void* observedPlayer = GetObservedPlayerObject();
     if (!observedPlayer) {
         return false;
     }
@@ -623,22 +652,29 @@ bool CapturePlayerCategoriesFromObservedPlayer()
     return false;
 }
 
-void CapturePlayerContainerFromNative(void* self)
+bool CapturePlayerCategoriesFromObservedPlayer()
+{
+    return CapturePlayerCategoriesNearInterface(GetObservedPlayerObject());
+}
+
+bool CapturePlayerContainerFromNative(void* self)
 {
     if (!IsReadableMemory(self, 0x10)) {
-        return;
+        return false;
     }
     void* context = *reinterpret_cast<void**>(static_cast<BYTE*>(self) + 0x0C);
     if (!IsReadableMemory(context, sizeof(void*))) {
-        return;
+        return false;
+    }
+    void** vtable = *reinterpret_cast<void***>(context);
+    if (!IsReadableMemory(vtable, sizeof(void*) * 3) ||
+        !IsExecutableMemory(vtable[2])) {
+        return false;
     }
     g_playerNativeContext = context;
-    void** vtable = *reinterpret_cast<void***>(context);
-    if (!IsReadableMemory(vtable, sizeof(void*) * 3) || !vtable[2]) {
-        return;
-    }
     const auto lookup = reinterpret_cast<LookupObject_t>(vtable[2]);
     CapturePlayerCategories(lookup(context, PLAYER_CONTAINER_HASH));
+    return IsObservedPlayerInventoryReady();
 }
 
 bool __fastcall HookScriptGetPlayerContainer(

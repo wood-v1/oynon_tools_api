@@ -76,6 +76,7 @@ OYNONTOOLS_API BOOL OynonGetActivePlayerUseScript(char* buffer, DWORD bufferCapa
 OYNONTOOLS_API BOOL OynonRegisterPlayerShootingAttemptCallback(OynonPlayerShootingAttemptCallback callback, void* userData);
 OYNONTOOLS_API BOOL OynonRegisterKeyboardCallback(OynonKeyboardCallback callback, void* userData);
 OYNONTOOLS_API BOOL OynonSetPlayerBootstrapEffect(const char* effectName);
+OYNONTOOLS_API BOOL OynonRearmPlayerBootstrapEffect();
 OYNONTOOLS_API BOOL OynonConfirmPlayerBootstrapReady();
 OYNONTOOLS_API BOOL OynonSetPlayerInventoryCategoryCapacity(DWORD capacity);
 OYNONTOOLS_API BOOL OynonSetWorldContainerCapacity(DWORD capacity);

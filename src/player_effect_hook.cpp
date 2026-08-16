@@ -191,6 +191,29 @@ BOOL SetPlayerBootstrapEffect(const char* effectName)
     return TRUE;
 }
 
+BOOL RearmPlayerBootstrapEffect()
+{
+    {
+        std::lock_guard<std::mutex> lock(g_listenerMutex);
+        if (g_playerBootstrapEffect.empty()) {
+            return FALSE;
+        }
+
+        // A save load may reuse the same player address after destroying the
+        // object that previously occupied it. Do not let the readiness path
+        // inspect that stale object before a native call from the new HUD has
+        // supplied its current script context.
+        g_observedPlayer = nullptr;
+        g_bootstrappedPlayer = nullptr;
+        g_deferredBootstrapPlayer = nullptr;
+        g_confirmedBootstrapPlayer = nullptr;
+    }
+
+    ResetCapturedPlayerInventoryState();
+    WriteDebugLog("OynonTools", "Oynon player bootstrap rearmed for UI session");
+    return TRUE;
+}
+
 BOOL ConfirmPlayerBootstrapReady()
 {
     void* player = nullptr;
@@ -217,6 +240,38 @@ void* GetObservedPlayerObject()
 {
     std::lock_guard<std::mutex> lock(g_listenerMutex);
     return g_observedPlayer;
+}
+
+void RecoverObservedPlayerFromInventoryManager(void* playerInventory)
+{
+    if (!playerInventory) {
+        return;
+    }
+
+    // The five-category inventory manager is embedded 0x18 bytes before the
+    // interface used by Player::ApplyEffect. Save loading restores inventory
+    // data directly and may never call ApplyEffect, so the regular hook has no
+    // opportunity to observe the reconstructed player. The relation is the
+    // inverse of the verified -24 bootstrap scan in
+    // CapturePlayerCategoriesFromObservedPlayer().
+    void* recoveredPlayer = static_cast<BYTE*>(playerInventory) + 0x18;
+    bool changed = false;
+    {
+        std::lock_guard<std::mutex> lock(g_listenerMutex);
+        if (g_observedPlayer != recoveredPlayer) {
+            g_observedPlayer = recoveredPlayer;
+            g_bootstrappedPlayer = nullptr;
+            g_deferredBootstrapPlayer = nullptr;
+            g_confirmedBootstrapPlayer = nullptr;
+            changed = true;
+        }
+    }
+
+    if (changed) {
+        WriteDebugLog(
+            "OynonTools",
+            "Oynon observed player recovered from five-category inventory manager");
+    }
 }
 
 BOOL ApplyObservedPlayerEffect(const char* effectName)
