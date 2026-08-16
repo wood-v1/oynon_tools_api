@@ -6,6 +6,8 @@ bool InstallPlayerInventoryCapacityHook();
 BOOL ConfigurePlayerInventoryCategoryCapacity(DWORD capacity);
 BOOL ConfigureWorldContainerCapacity(DWORD capacity);
 void ResetCapturedPlayerInventoryState();
+bool RefreshObservedPlayerInventoryState();
+bool IsObservedPlayerInventoryReady();
 BOOL SetObservedPlayerHandsItem(int itemId);
 BOOL StablePrioritizePlayerInventory(
     const DWORD* priorityItemIds,

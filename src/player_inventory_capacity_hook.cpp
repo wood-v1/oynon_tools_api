@@ -1,6 +1,7 @@
 #include "player_inventory_capacity_hook.h"
 
 #include "debug.h"
+#include "console_execute_hook.h"
 #include "inline_hook_utils.h"
 #include "player_effect_hook.h"
 
@@ -94,6 +95,7 @@ void** g_directPlayerAddItemSlot = nullptr;
 DirectPlayerAddItem_t g_originalDirectPlayerAddItem = nullptr;
 thread_local unsigned int g_playerCapacityOverrideDepth = 0;
 thread_local unsigned int g_playerCapacityOverrideCalls = 0;
+thread_local bool g_suppressCaptureDiagnostics = false;
 
 bool SetBranchOpcode(BYTE opcode)
 {
@@ -211,6 +213,51 @@ bool ValidateCategoryReorderMethods(
     return MatchesCode(reinterpret_cast<const void*>(getCount), GET_COUNT_EXPECTED) &&
         MatchesCode(reinterpret_cast<const void*>(getItem), GET_ITEM_EXPECTED) &&
         MatchesCode(reinterpret_cast<const void*>(setItem), SET_ITEM_EXPECTED);
+}
+
+bool IsCategoryStorageReady(void* category)
+{
+    GetCategoryItemCount_t getCount = nullptr;
+    GetCategoryItem_t getItem = nullptr;
+    SetCategoryItem_t setItem = nullptr;
+    if (!ValidateCategoryReorderMethods(category, getCount, getItem, setItem) ||
+        !IsReadableMemory(category, 0x14)) {
+        return false;
+    }
+
+    const DWORD capacity = *reinterpret_cast<DWORD*>(
+        static_cast<BYTE*>(category) + CATEGORY_CAPACITY_FIELD_OFFSET);
+    if (capacity < VANILLA_CATEGORY_CAPACITY || capacity > MAX_WORLD_CONTAINER_CAPACITY) {
+        return false;
+    }
+
+    BYTE* begin = *reinterpret_cast<BYTE**>(static_cast<BYTE*>(category) + 0x0C);
+    BYTE* end = *reinterpret_cast<BYTE**>(static_cast<BYTE*>(category) + 0x10);
+    if (!begin && !end) {
+        return true;
+    }
+    if (!begin || !end || end < begin) {
+        return false;
+    }
+
+    const std::uintptr_t byteCount =
+        reinterpret_cast<std::uintptr_t>(end) - reinterpret_cast<std::uintptr_t>(begin);
+    if ((byteCount & 0x1F) != 0 ||
+        byteCount > static_cast<std::uintptr_t>(MAX_WORLD_CONTAINER_CAPACITY) * 0x20) {
+        return false;
+    }
+    return byteCount == 0 || IsReadableMemory(begin, static_cast<std::size_t>(byteCount));
+}
+
+bool ArePlayerCategoriesReady(
+    const std::array<void*, PLAYER_CATEGORY_COUNT>& categories)
+{
+    for (void* category : categories) {
+        if (!IsCategoryStorageReady(category)) {
+            return false;
+        }
+    }
+    return true;
 }
 
 bool IsPlayerInventoryManager(void* candidate)
@@ -339,9 +386,11 @@ bool __fastcall HookDirectPlayerAddItem(
 {
     const bool playerInventory = self && self == g_playerContainer;
     if (playerInventory) {
-        // The direct player-container interface is embedded at player+0x60;
-        // the category manager used by the actual add operation is at +0x3C.
-        CapturePlayerCategoriesFromInventory(static_cast<BYTE*>(self) - 0x24);
+        // CapturePlayerCategories installs this vtable hook only after the
+        // current player categories have already been validated.  This shared
+        // virtual method is also queried continuously by the UI, so repeating
+        // the five-category scan here turns a cheap call into thousands of
+        // VirtualQuery calls per second and permanently halves the frame rate.
         ++g_playerCapacityOverrideDepth;
         g_playerCapacityOverrideCalls = 0;
     }
@@ -438,6 +487,10 @@ void CapturePlayerCategories(void* playerContainer)
             return;
         }
     }
+    if (!ArePlayerCategoriesReady(categories)) {
+        WriteDebugLog("OynonTools", "Oynon player categories are present but not initialized");
+        return;
+    }
 
     bool categoriesChanged = playerContainer != g_playerContainer;
     for (unsigned int category = 0; category < PLAYER_CATEGORY_COUNT; ++category) {
@@ -479,7 +532,9 @@ void CapturePlayerCategoriesFromInventory(void* playerInventory)
     }
     void** vtable = *reinterpret_cast<void***>(playerInventory);
     if (!IsReadableMemory(vtable, sizeof(void*) * 4) || !vtable[3]) {
-        WriteDebugLog("OynonTools", "Oynon player inventory category getter is unreadable");
+        if (!g_suppressCaptureDiagnostics) {
+            WriteDebugLog("OynonTools", "Oynon player inventory category getter is unreadable");
+        }
         return;
     }
 
@@ -488,9 +543,17 @@ void CapturePlayerCategoriesFromInventory(void* playerInventory)
     for (unsigned int category = 0; category < PLAYER_CATEGORY_COUNT; ++category) {
         categories[category] = getSubContainer(playerInventory, category);
         if (!IsReadableMemory(categories[category], sizeof(void*))) {
-            WriteDebugLog("OynonTools", "Oynon direct player category lookup failed");
+            if (!g_suppressCaptureDiagnostics) {
+                WriteDebugLog("OynonTools", "Oynon direct player category lookup failed");
+            }
             return;
         }
+    }
+    if (!ArePlayerCategoriesReady(categories)) {
+        if (!g_suppressCaptureDiagnostics) {
+            WriteDebugLog("OynonTools", "Oynon direct player categories are not initialized");
+        }
+        return;
     }
 
     const bool firstCapture = g_playerInventory != playerInventory;
@@ -542,7 +605,10 @@ bool CapturePlayerCategoriesFromObservedPlayer()
             continue;
         }
 
+        const bool previousSuppression = g_suppressCaptureDiagnostics;
+        g_suppressCaptureDiagnostics = true;
         CapturePlayerCategoriesFromInventory(candidate);
+        g_suppressCaptureDiagnostics = previousSuppression;
         if (g_playerInventory == candidate) {
             char message[192] = {};
             std::snprintf(
@@ -583,9 +649,11 @@ bool __fastcall HookScriptGetPlayerContainer(
     unsigned int parameterCount)
 {
     CapturePlayerContainerFromNative(self);
-    return g_originalGetPlayerContainer
+    const bool resultValue = g_originalGetPlayerContainer
         ? g_originalGetPlayerContainer(self, arguments, result, parameterCount)
         : false;
+    TryApplyPendingPlayerBootstrap();
+    return resultValue;
 }
 
 bool __fastcall HookScriptAddItem(
@@ -630,6 +698,9 @@ bool __fastcall HookScriptAddItem(
 
     if (branchPatched) {
         SetBranchOpcode(0x76);
+    }
+    if (playerInventory) {
+        TryApplyPendingPlayerBootstrap();
     }
     return added;
 }
@@ -719,26 +790,72 @@ void ResetCapturedPlayerInventoryState()
     WriteDebugLog("OynonTools", "Oynon player inventory session state reset");
 }
 
-BOOL SetObservedPlayerHandsItem(int itemId)
+bool IsObservedPlayerInventoryReady()
 {
+    return GetObservedPlayerObject() != nullptr &&
+        g_playerInventory != nullptr &&
+        ArePlayerCategoriesReady(g_playerCategories);
+}
+
+bool RefreshObservedPlayerInventoryState()
+{
+    if (IsObservedPlayerInventoryReady()) {
+        return true;
+    }
+    if (!CapturePlayerCategoriesFromObservedPlayer()) {
+        return false;
+    }
+    return IsObservedPlayerInventoryReady();
+}
+
+void __stdcall ApplyObservedPlayerHandsItem(void* itemIdContext)
+{
+    const int itemId = static_cast<int>(
+        reinterpret_cast<std::intptr_t>(itemIdContext));
     void* context = g_playerNativeContext;
     if (!IsReadableMemory(context, sizeof(void*))) {
-        WriteDebugLog("OynonTools", "Oynon SetPlayerHandsItem rejected: player context unavailable");
-        return FALSE;
+        WriteDebugLog("OynonTools", "Oynon queued SetPlayerHandsItem rejected: player context unavailable");
+        return;
     }
 
     void** vtable = *reinterpret_cast<void***>(context);
     if (!IsReadableMemory(vtable, sizeof(void*) * 5) || !vtable[4] ||
         !IsReadableMemory(vtable[4], 8)) {
-        WriteDebugLog("OynonTools", "Oynon SetPlayerHandsItem rejected: context method unavailable");
-        return FALSE;
+        WriteDebugLog("OynonTools", "Oynon queued SetPlayerHandsItem rejected: context method unavailable");
+        return;
     }
 
-    // SetPlayerHandsItem's verified script-native wrapper dispatches the item ID
-    // to slot 4 of the same player context captured by GetPlayerContainer.
+    LARGE_INTEGER frequency = {};
+    LARGE_INTEGER started = {};
+    LARGE_INTEGER finished = {};
+    ::QueryPerformanceFrequency(&frequency);
+    ::QueryPerformanceCounter(&started);
     const auto setHandsItem = reinterpret_cast<SetPlayerHandsItem_t>(vtable[4]);
     setHandsItem(context, itemId);
-    return TRUE;
+    ::QueryPerformanceCounter(&finished);
+    const long long elapsedUs = frequency.QuadPart > 0
+        ? (finished.QuadPart - started.QuadPart) * 1000000LL / frequency.QuadPart
+        : 0;
+    if (elapsedUs >= 5000) {
+        char line[144] = {};
+        std::snprintf(
+            line,
+            sizeof(line),
+            "Oynon SetPlayerHandsItem item=%d elapsed_us=%lld",
+            itemId,
+            elapsedUs);
+        WriteDebugLog("OynonTools", line);
+    }
+}
+
+BOOL SetObservedPlayerHandsItem(int itemId)
+{
+    // SetPlayerHandsItem touches live actor/render state. Script effects and
+    // console callbacks can request it from worker threads, so serialize it on
+    // the same game-window thread used for engine console execution.
+    return DispatchGameThreadTask(
+        &ApplyObservedPlayerHandsItem,
+        reinterpret_cast<void*>(static_cast<std::intptr_t>(itemId)));
 }
 
 BOOL StablePrioritizePlayerInventory(

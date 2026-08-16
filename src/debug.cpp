@@ -241,14 +241,48 @@ void OpenDebugConsole()
         return;
     }
 
+    // AllocConsole creates and activates a top-level window.  When Pathologic
+    // is running fullscreen that late activation minimizes the game window.
+    // Preserve the foreground owner, hide the console before configuring it,
+    // and show it with WS_EX_NOACTIVATE so diagnostics never change focus.
+    const HWND previousForeground = ::GetForegroundWindow();
     if (!::AllocConsole()) {
         return;
+    }
+
+    const HWND consoleWindow = ::GetConsoleWindow();
+    if (consoleWindow) {
+        ::ShowWindow(consoleWindow, SW_HIDE);
+        const LONG_PTR extendedStyle = ::GetWindowLongPtrA(consoleWindow, GWL_EXSTYLE);
+        ::SetWindowLongPtrA(
+            consoleWindow,
+            GWL_EXSTYLE,
+            extendedStyle | WS_EX_NOACTIVATE | WS_EX_TOOLWINDOW);
     }
 
     ::SetConsoleTitleA("OynonTools Debug Console");
     MoveConsoleToRightSide();
     g_debugConsoleHandle = ::GetStdHandle(STD_OUTPUT_HANDLE);
     g_debugConsoleOpened = true;
+
+    if (consoleWindow) {
+        ::ShowWindow(consoleWindow, SW_SHOWNOACTIVATE);
+        ::SetWindowPos(
+            consoleWindow,
+            nullptr,
+            0,
+            0,
+            0,
+            0,
+            SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_SHOWWINDOW);
+    }
+
+    if (previousForeground && previousForeground != consoleWindow && ::IsWindow(previousForeground)) {
+        if (::IsIconic(previousForeground)) {
+            ::ShowWindowAsync(previousForeground, SW_RESTORE);
+        }
+        ::SetForegroundWindow(previousForeground);
+    }
 }
 
 void WriteDebugLog(const char* channelId, const char* line)

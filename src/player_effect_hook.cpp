@@ -1,5 +1,6 @@
 #include "player_effect_hook.h"
 
+#include "console_execute_hook.h"
 #include "debug.h"
 #include "inline_hook_utils.h"
 #include "player_inventory_capacity_hook.h"
@@ -7,6 +8,7 @@
 #include <algorithm>
 #include <array>
 #include <cstring>
+#include <memory>
 #include <mutex>
 #include <string>
 #include <vector>
@@ -38,7 +40,15 @@ PlayerApplyEffect_t g_originalPlayerApplyEffect = nullptr;
 std::mutex g_listenerMutex;
 std::vector<PlayerEffectListener> g_playerEffectListeners;
 std::string g_playerBootstrapEffect;
+void* g_observedPlayer = nullptr;
 void* g_bootstrappedPlayer = nullptr;
+void* g_deferredBootstrapPlayer = nullptr;
+void* g_confirmedBootstrapPlayer = nullptr;
+
+struct PendingPlayerEffect
+{
+    std::string effectName;
+};
 
 bool MatchesPlayerApplyEffectPrologue(const BYTE* bytes)
 {
@@ -92,23 +102,58 @@ void DispatchPlayerEffect(const char* effectName)
     }
 }
 
+void __stdcall ApplyObservedPlayerEffectOnGameThread(void* context)
+{
+    std::unique_ptr<PendingPlayerEffect> pending(
+        static_cast<PendingPlayerEffect*>(context));
+    if (!pending || pending->effectName.empty()) {
+        return;
+    }
+
+    void* player = nullptr;
+    PlayerApplyEffect_t applyEffect = nullptr;
+    {
+        std::lock_guard<std::mutex> lock(g_listenerMutex);
+        player = g_observedPlayer;
+        applyEffect = g_originalPlayerApplyEffect;
+    }
+    if (!player || !applyEffect) {
+        WriteDebugLog(
+            "OynonTools",
+            "Oynon observed-player effect skipped: player is unavailable");
+        return;
+    }
+
+    const bool applied = applyEffect(
+        player,
+        pending->effectName.c_str(),
+        nullptr);
+    WriteDebugLog(
+        "OynonTools",
+        applied
+            ? "Oynon observed-player effect applied on game thread"
+            : "Oynon observed-player effect rejected on game thread");
+}
+
 bool __fastcall HookPlayerApplyEffect(void* self, void*, const char* effectName, void* params)
 {
     const bool applied = g_originalPlayerApplyEffect
         ? g_originalPlayerApplyEffect(self, effectName, params)
         : false;
     if (applied) {
-        std::string bootstrapEffect;
-        bool injectBootstrap = false;
         bool playerChanged = false;
+        bool bootstrapPending = false;
         {
             std::lock_guard<std::mutex> lock(g_listenerMutex);
-            if (!g_playerBootstrapEffect.empty() && self != g_bootstrappedPlayer) {
-                g_bootstrappedPlayer = self;
-                bootstrapEffect = g_playerBootstrapEffect;
-                injectBootstrap = true;
+            if (self != g_observedPlayer) {
+                g_observedPlayer = self;
+                g_bootstrappedPlayer = nullptr;
+                g_deferredBootstrapPlayer = nullptr;
+                g_confirmedBootstrapPlayer = nullptr;
                 playerChanged = true;
             }
+            bootstrapPending = !g_playerBootstrapEffect.empty() &&
+                g_bootstrappedPlayer != g_observedPlayer;
         }
         if (playerChanged) {
             // Category objects and the script-native context belong to the
@@ -116,12 +161,18 @@ bool __fastcall HookPlayerApplyEffect(void* self, void*, const char* effectName,
             // a save-to-new-game transition, so readability checks alone are
             // insufficient to prevent a stale virtual call.
             ResetCapturedPlayerInventoryState();
+            WriteDebugLog(
+                "OynonTools",
+                "Oynon player bootstrap queued until inventory is ready");
         }
-        if (injectBootstrap && effectName && bootstrapEffect != effectName && g_originalPlayerApplyEffect) {
-            const bool bootstrapApplied = g_originalPlayerApplyEffect(self, bootstrapEffect.c_str(), nullptr);
-            WriteDebugLog("OynonTools", bootstrapApplied
-                ? "Oynon player bootstrap effect applied"
-                : "Oynon player bootstrap effect rejected");
+
+        // A successful ApplyEffect only proves that a player-like actor exists.
+        // The prologue and finale hubs also create transitional player actors,
+        // but those actors do not own a complete five-category inventory. Probe
+        // the verified inventory manager before constructing the bootstrap task.
+        if (bootstrapPending) {
+            RefreshObservedPlayerInventoryState();
+            TryApplyPendingPlayerBootstrap();
         }
         DispatchPlayerEffect(effectName);
     }
@@ -135,13 +186,112 @@ BOOL SetPlayerBootstrapEffect(const char* effectName)
     std::lock_guard<std::mutex> lock(g_listenerMutex);
     g_playerBootstrapEffect = effectName ? effectName : "";
     g_bootstrappedPlayer = nullptr;
+    g_deferredBootstrapPlayer = nullptr;
+    g_confirmedBootstrapPlayer = nullptr;
     return TRUE;
+}
+
+BOOL ConfirmPlayerBootstrapReady()
+{
+    void* player = nullptr;
+    {
+        std::lock_guard<std::mutex> lock(g_listenerMutex);
+        if (g_playerBootstrapEffect.empty() || !g_observedPlayer) {
+            return FALSE;
+        }
+        player = g_observedPlayer;
+        g_confirmedBootstrapPlayer = player;
+    }
+
+    // The caller confirms a gameplay lifecycle point (for example the first
+    // real-world transition UI). Structural inventory validation remains a
+    // separate requirement and is intentionally performed on the game thread.
+    RefreshObservedPlayerInventoryState();
+    TryApplyPendingPlayerBootstrap();
+
+    std::lock_guard<std::mutex> lock(g_listenerMutex);
+    return g_observedPlayer == player ? TRUE : FALSE;
 }
 
 void* GetObservedPlayerObject()
 {
     std::lock_guard<std::mutex> lock(g_listenerMutex);
-    return g_bootstrappedPlayer;
+    return g_observedPlayer;
+}
+
+BOOL ApplyObservedPlayerEffect(const char* effectName)
+{
+    if (!effectName || !effectName[0] || !IsObservedPlayerInventoryReady()) {
+        return FALSE;
+    }
+
+    auto pending = std::make_unique<PendingPlayerEffect>();
+    pending->effectName = effectName;
+    if (!DispatchGameThreadTask(
+            &ApplyObservedPlayerEffectOnGameThread,
+            pending.get())) {
+        return FALSE;
+    }
+    pending.release();
+    return TRUE;
+}
+
+void TryApplyPendingPlayerBootstrap()
+{
+    void* player = nullptr;
+    std::string bootstrapEffect;
+    {
+        std::lock_guard<std::mutex> lock(g_listenerMutex);
+        if (g_playerBootstrapEffect.empty() || !g_observedPlayer ||
+            g_bootstrappedPlayer == g_observedPlayer ||
+            g_confirmedBootstrapPlayer != g_observedPlayer) {
+            return;
+        }
+        player = g_observedPlayer;
+        bootstrapEffect = g_playerBootstrapEffect;
+    }
+
+    if (!IsObservedPlayerInventoryReady()) {
+        bool shouldLog = false;
+        {
+            std::lock_guard<std::mutex> lock(g_listenerMutex);
+            if (g_observedPlayer == player && g_deferredBootstrapPlayer != player) {
+                g_deferredBootstrapPlayer = player;
+                shouldLog = true;
+            }
+        }
+        if (shouldLog) {
+            WriteDebugLog(
+                "OynonTools",
+                "Oynon player bootstrap deferred: five-category inventory is not ready");
+        }
+        return;
+    }
+
+    {
+        std::lock_guard<std::mutex> lock(g_listenerMutex);
+        if (g_observedPlayer != player || g_bootstrappedPlayer == player ||
+            g_playerBootstrapEffect != bootstrapEffect) {
+            return;
+        }
+        // Reserve before entering the game method. The original method may
+        // synchronously cause another observed inventory callback.
+        g_bootstrappedPlayer = player;
+        g_deferredBootstrapPlayer = nullptr;
+    }
+
+    const bool bootstrapApplied = g_originalPlayerApplyEffect
+        ? g_originalPlayerApplyEffect(player, bootstrapEffect.c_str(), nullptr)
+        : false;
+    if (!bootstrapApplied) {
+        std::lock_guard<std::mutex> lock(g_listenerMutex);
+        if (g_observedPlayer == player && g_bootstrappedPlayer == player) {
+            g_bootstrappedPlayer = nullptr;
+        }
+    }
+    WriteDebugLog("OynonTools", bootstrapApplied
+        ? "Oynon player bootstrap effect applied after inventory validation"
+        : "Oynon player bootstrap effect rejected after inventory validation");
 }
 
 bool InstallPlayerEffectHook()

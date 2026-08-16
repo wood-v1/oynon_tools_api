@@ -36,7 +36,10 @@ Registers a console-line filter. Return `TRUE` to suppress the line from the in-
 
 `OynonExecCommand(const char* command)`
 
-Executes a console command in the running game.
+Executes a console command in the running game. Calls made on the game window
+thread remain synchronous. Calls made by a mod worker thread are queued and
+dispatched on the game thread, preventing concurrent mutation of engine actors,
+effects, and event listeners.
 
 `OynonSetMovementFrictionMultiplier(float frictionMultiplier)`
 
@@ -60,7 +63,11 @@ Registers a listener for successful effects applied to the player. The callback 
 
 `OynonSetPlayerBootstrapEffect(const char* effectName)`
 
-Configures one compiled effect to be applied once to each newly created player actor. Configure it before initializing `OYNON_HOOK_PLAYER_EFFECT_CALLBACK`.
+Configures one compiled effect to be applied once to each newly created player actor. The effect is queued until OynonTools validates a complete five-category player inventory and the caller confirms a safe gameplay lifecycle point with `OynonConfirmPlayerBootstrapReady()`. Configure it before initializing both `OYNON_HOOK_PLAYER_EFFECT_CALLBACK` and `OYNON_HOOK_PLAYER_INVENTORY_CAPACITY`.
+
+`OynonConfirmPlayerBootstrapReady()`
+
+Confirms that the currently observed player has reached a caller-defined gameplay-ready lifecycle point. Confirmation is cleared whenever OynonTools observes a different player object. This second gate prevents structurally complete transitional actors in hub and finale worlds from receiving long-lived bootstrap effects.
 
 `OynonSetPlayerInventoryCategoryCapacity(DWORD capacity)`
 
@@ -129,6 +136,10 @@ Redirects vanilla `container.xml` and `corpse.xml` window creation independently
 
 Registers a generic callback that receives the original XML name immediately before `CreateWnd`. The callback does not redirect or replace the window. Request `OYNON_HOOK_UI_WINDOW_PREPARE` during initialization.
 
+`OynonRegisterUIWindowCreatedCallback(OynonUIWindowCreatedCallback callback, void* userData)`
+
+Registers a generic callback invoked after `CreateWnd`. It receives the original and resolved XML names, the creation result, and the time spent in the original UI call in microseconds. Companion windows are reported separately. Request `OYNON_HOOK_UI_WINDOW_PREPARE` during initialization.
+
 `OynonUISetWindowRedirect(const char* hostXml, const char* replacementXml)`
 
 Configures or clears a persistent generic XML redirect. This is the neutral form of the inventory/playerstat helpers and is suitable for other runtime mods.
@@ -140,6 +151,14 @@ Arms a redirect for the next matching window creation only. The rule is consumed
 `OynonUISetCompanionWindow(const char* hostXml, const char* companionXml)`
 
 Configures a companion XML window to be opened beside a matching host window. Pass an empty replacement to clear the mapping.
+
+`OynonUIAddPersistentCompanionWindow(const char* hostXml, const char* companionXml)`
+
+Registers an independently tracked companion window that is attached once to every matching host UI station. Multiple persistent companions may target the same host. OynonTools remembers recently created host contexts, so a registration made after the host was created is fulfilled on the next safe UI create tick. The association is cleared when the station is removed and recreated automatically with the next host station.
+
+`OynonUIRemovePersistentCompanionWindow(const char* hostXml, const char* companionXml)`
+
+Removes a persistent companion registration. Already-created windows remain owned by their UI station and are destroyed with it.
 
 `OynonUIInventoryPoll()`
 

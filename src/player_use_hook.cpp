@@ -37,6 +37,7 @@ InlineHook g_playerUseEventHook;
 PlayerUseEvent_t g_originalPlayerUseEvent = nullptr;
 std::mutex g_listenerMutex;
 std::vector<PlayerUseListener> g_playerUseListeners;
+thread_local std::array<char, MAX_SCRIPT_NAME_LENGTH> g_activePlayerUseScript = {};
 
 bool MatchesPlayerUseEventPrologue(const BYTE* bytes)
 {
@@ -139,15 +140,28 @@ void DispatchPlayerUse(const char* scriptName)
 
 bool __fastcall HookPlayerUseEvent(void* self, void*, void* script)
 {
+    char scriptName[MAX_SCRIPT_NAME_LENGTH] = {};
+    const bool hasScriptName =
+        TryReadRuntimeScriptName(script, scriptName, sizeof(scriptName));
+    if (hasScriptName) {
+        std::memcpy(
+            g_activePlayerUseScript.data(),
+            scriptName,
+            sizeof(g_activePlayerUseScript));
+    }
+    else {
+        g_activePlayerUseScript[0] = '\0';
+    }
+
     const bool used = g_originalPlayerUseEvent
         ? g_originalPlayerUseEvent(self, script)
         : false;
+    g_activePlayerUseScript[0] = '\0';
     if (!used) {
         return false;
     }
 
-    char scriptName[MAX_SCRIPT_NAME_LENGTH] = {};
-    if (TryReadRuntimeScriptName(script, scriptName, sizeof(scriptName))) {
+    if (hasScriptName) {
         DispatchPlayerUse(scriptName);
     }
     return true;
@@ -202,5 +216,22 @@ BOOL RegisterPlayerUseCallback(OynonPlayerUseCallback callback, void* userData)
     }
 
     g_playerUseListeners.push_back(PlayerUseListener{ callback, userData });
+    return TRUE;
+}
+
+BOOL GetActivePlayerUseScript(char* buffer, DWORD bufferCapacity)
+{
+    if (!buffer || bufferCapacity == 0 || g_activePlayerUseScript[0] == '\0') {
+        return FALSE;
+    }
+
+    const std::size_t capacity = static_cast<std::size_t>(bufferCapacity);
+    const std::size_t length = std::strlen(g_activePlayerUseScript.data());
+    if (length + 1 > capacity) {
+        buffer[0] = '\0';
+        return FALSE;
+    }
+
+    std::memcpy(buffer, g_activePlayerUseScript.data(), length + 1);
     return TRUE;
 }

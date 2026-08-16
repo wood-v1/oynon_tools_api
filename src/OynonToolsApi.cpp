@@ -100,6 +100,11 @@ BOOL OynonRegisterConsoleMessageFilter(OynonConsoleMessageFilter filter, void* u
     return RegisterConsoleMessageFilter(filter, userData);
 }
 
+BOOL OynonRegisterConsoleCommandFilter(OynonConsoleCommandFilter filter, void* userData)
+{
+    return RegisterConsoleCommandFilter(filter, userData);
+}
+
 BOOL OynonRegisterPlayerEffectCallback(OynonPlayerEffectCallback callback, void* userData)
 {
     return RegisterPlayerEffectCallback(callback, userData);
@@ -115,9 +120,19 @@ BOOL OynonRegisterUIWindowPrepareCallback(OynonUIWindowPrepareCallback callback,
     return RegisterUIWindowPrepareListener(callback, userData);
 }
 
+BOOL OynonRegisterUIWindowCreatedCallback(OynonUIWindowCreatedCallback callback, void* userData)
+{
+    return RegisterUIWindowCreatedListener(callback, userData);
+}
+
 BOOL OynonRegisterPlayerUseCallback(OynonPlayerUseCallback callback, void* userData)
 {
     return RegisterPlayerUseCallback(callback, userData);
+}
+
+BOOL OynonGetActivePlayerUseScript(char* buffer, DWORD bufferCapacity)
+{
+    return GetActivePlayerUseScript(buffer, bufferCapacity);
 }
 
 BOOL OynonRegisterPlayerShootingAttemptCallback(OynonPlayerShootingAttemptCallback callback, void* userData)
@@ -135,6 +150,11 @@ BOOL OynonSetPlayerBootstrapEffect(const char* effectName)
     return SetPlayerBootstrapEffect(effectName);
 }
 
+BOOL OynonConfirmPlayerBootstrapReady()
+{
+    return ConfirmPlayerBootstrapReady();
+}
+
 BOOL OynonSetPlayerInventoryCategoryCapacity(DWORD capacity)
 {
     return ConfigurePlayerInventoryCategoryCapacity(capacity);
@@ -148,6 +168,11 @@ BOOL OynonSetWorldContainerCapacity(DWORD capacity)
 BOOL OynonSetPlayerHandsItem(int itemId)
 {
     return SetObservedPlayerHandsItem(itemId);
+}
+
+BOOL OynonApplyObservedPlayerEffect(const char* effectName)
+{
+    return ApplyObservedPlayerEffect(effectName);
 }
 
 BOOL OynonStablePrioritizePlayerInventory(
@@ -172,6 +197,11 @@ BOOL OynonStablePrioritizePlayerInventory(
 BOOL OynonExecCommand(const char* command)
 {
     return ExecuteConsoleCommand(command);
+}
+
+BOOL OynonExecCommandInUIWindowPrepare(const char* command)
+{
+    return ExecuteConsoleCommandInUIWindowPrepare(command);
 }
 
 BOOL OynonSetMovementFrictionMultiplier(float frictionMultiplier)
@@ -237,6 +267,16 @@ BOOL OynonUISetOneShotWindowRedirect(const char* hostXml, const char* replacemen
 BOOL OynonUISetCompanionWindow(const char* hostXml, const char* companionXml)
 {
     return SetUICompanionWindow(hostXml, companionXml);
+}
+
+BOOL OynonUIAddPersistentCompanionWindow(const char* hostXml, const char* companionXml)
+{
+    return AddUIPersistentCompanionWindow(hostXml, companionXml);
+}
+
+BOOL OynonUIRemovePersistentCompanionWindow(const char* hostXml, const char* companionXml)
+{
+    return RemoveUIPersistentCompanionWindow(hostXml, companionXml);
 }
 
 void OynonUIInventoryPoll()
